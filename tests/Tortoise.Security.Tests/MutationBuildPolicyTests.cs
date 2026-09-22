@@ -8,7 +8,7 @@ public sealed class MutationBuildPolicyTests
     [Fact]
     public void Public_build_notice_is_present()
     {
-        Assert.Contains("structurally disabled", MutationBuildPolicy.PublicBuildNotice, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("runtime-guarded", MutationBuildPolicy.PublicBuildNotice, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

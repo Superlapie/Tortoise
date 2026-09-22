@@ -11,21 +11,33 @@ public static class MutationBuildPolicy
     private static bool _testLabModeEnabled;
 
     public const string PublicBuildNotice =
-        "Read-only build — real driver mutation is structurally disabled. Use Tortoise.Lab in an isolated VM for mutation testing.";
+        "Read-only build — real driver mutation is runtime-guarded in public binaries. Use Tortoise.Lab in an isolated VM for mutation testing.";
 
     public const string LabBuildNotice =
         "Tortoise.Lab build — real mutation remains VM-gated and requires explicit environment markers.";
 
     public static bool IsLabBuild => AllowsRealMutation;
 
+    public static bool IsLabBrokerBuild => IsLabBrokerExecutable() || _testLabBrokerModeEnabled;
+
+    private static bool _testLabBrokerModeEnabled;
+
     public static bool AllowsRealMutation =>
         _testLabModeEnabled || IsLabExecutable();
 
     public static void EnableTestLabMode() => _testLabModeEnabled = true;
 
+    public static void EnableTestLabBrokerMode() => _testLabBrokerModeEnabled = true;
+
     private static bool IsLabExecutable()
     {
         var entryName = Assembly.GetEntryAssembly()?.GetName().Name;
         return string.Equals(entryName, "tortoise-lab", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLabBrokerExecutable()
+    {
+        var entryName = Assembly.GetEntryAssembly()?.GetName().Name;
+        return string.Equals(entryName, "tortoise-lab-broker", StringComparison.OrdinalIgnoreCase);
     }
 }

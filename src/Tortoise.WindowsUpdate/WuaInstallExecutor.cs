@@ -8,51 +8,26 @@ namespace Tortoise.WindowsUpdate;
 
 internal static class WuaInstallExecutor
 {
-    internal static WindowsUpdateInstallResult Install(
-        string updateId,
-        int revision,
-        CancellationToken cancellationToken)
+    internal static WindowsUpdateDownloadResult Download(string updateId, int revision, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         return WuaSessionRunner.Execute(session =>
         {
-            var searcher = session.CreateUpdateSearcher();
-            var criteria =
-                $"UpdateID='{updateId}' and RevisionNumber={revision.ToString(CultureInfo.InvariantCulture)}";
-
-            ISearchResult searchResult;
-            try
+            using var scope = new WuaComScope();
+            var searchBundle = SearchUpdate(session, updateId, revision, scope);
+            if (searchBundle is null)
             {
-                searchResult = searcher.Search(criteria);
-            }
-            catch (COMException ex)
-            {
-                throw new TortoiseException(
-                    TortoiseErrorCategory.WindowsUpdateError,
-                    "Windows Update could not locate the requested driver package.",
-                    $"WUA install search failed: {ex.Message}",
-                    ex.HResult,
-                    ex);
-            }
-
-            if (searchResult.Updates.Count == 0)
-            {
-                WuaComFactory.ReleaseComObject(searchResult);
-                WuaComFactory.ReleaseComObject(searcher);
-                return new WindowsUpdateInstallResult(
+                return new WindowsUpdateDownloadResult(
                     false,
-                    ResultCode: (int)OperationResultCode.Failed,
-                    RebootRequired: false,
+                    (int)OperationResultCode.Failed,
+                    0,
                     "Windows Update did not return the requested driver package.");
             }
 
-            var update = searchResult.Updates[0];
-            var collection = WuaComFactory.CreateUpdateCollection();
-            collection.Add(update);
-
             var downloader = session.CreateUpdateDownloader();
-            downloader.Updates = collection;
+            scope.Track(downloader);
+            downloader.Updates = searchBundle.Collection;
 
             IDownloadResult downloadResult;
             try
@@ -69,28 +44,35 @@ internal static class WuaInstallExecutor
                     ex);
             }
 
-            if (downloadResult.ResultCode is not OperationResultCode.Succeeded
-                and not OperationResultCode.SucceededWithErrors)
-            {
-                var downloadCode = (int)downloadResult.ResultCode;
-                WuaComFactory.ReleaseComObject(downloadResult);
-                WuaComFactory.ReleaseComObject(downloader);
-                WuaComFactory.ReleaseComObject(collection);
-                WuaComFactory.ReleaseComObject(update);
-                WuaComFactory.ReleaseComObject(searchResult);
-                WuaComFactory.ReleaseComObject(searcher);
+            scope.Track(downloadResult);
+            return EvaluateDownloadResult(downloadResult);
+        });
+    }
 
+    internal static WindowsUpdateInstallResult InstallPrepared(
+        string updateId,
+        int revision,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return WuaSessionRunner.Execute(session =>
+        {
+            using var scope = new WuaComScope();
+            var searchBundle = SearchUpdate(session, updateId, revision, scope);
+            if (searchBundle is null)
+            {
                 return new WindowsUpdateInstallResult(
                     false,
-                    downloadCode,
+                    (int)OperationResultCode.Failed,
+                    0,
                     RebootRequired: false,
-                    $"Windows Update download returned result code {downloadCode.ToString(CultureInfo.InvariantCulture)} (HRESULT 0x{downloadResult.HResult:X8}).");
+                    "Windows Update did not return the requested driver package.");
             }
 
-            WuaComFactory.ReleaseComObject(downloadResult);
-
             var installer = session.CreateUpdateInstaller();
-            installer.Updates = collection;
+            scope.Track(installer);
+            installer.Updates = searchBundle.Collection;
 
             if (installer is IUpdateInstaller2 installer2)
             {
@@ -112,28 +94,136 @@ internal static class WuaInstallExecutor
                     ex);
             }
 
-            var resultCode = (int)installationResult.ResultCode;
+            scope.Track(installationResult);
             var rebootRequired = installationResult.RebootRequired || installer.RebootRequiredBeforeInstallation;
-            if (update is IUpdate2 update2)
+            if (searchBundle.Update is IUpdate2 update2)
             {
                 rebootRequired |= update2.RebootRequired;
             }
 
-            var succeeded = installationResult.ResultCode is OperationResultCode.Succeeded
-                or OperationResultCode.SucceededWithErrors;
-            var message = succeeded
-                ? "Windows Update reported that driver download and installation completed."
-                : $"Windows Update install returned result code {resultCode.ToString(CultureInfo.InvariantCulture)} (HRESULT 0x{installationResult.HResult:X8}).";
-
-            WuaComFactory.ReleaseComObject(installationResult);
-            WuaComFactory.ReleaseComObject(installer);
-            WuaComFactory.ReleaseComObject(downloader);
-            WuaComFactory.ReleaseComObject(collection);
-            WuaComFactory.ReleaseComObject(update);
-            WuaComFactory.ReleaseComObject(searchResult);
-            WuaComFactory.ReleaseComObject(searcher);
-
-            return new WindowsUpdateInstallResult(succeeded, resultCode, rebootRequired, message);
+            return EvaluateInstallationResult(installationResult, rebootRequired);
         });
+    }
+
+    internal static WindowsUpdateInstallResult Install(
+        string updateId,
+        int revision,
+        CancellationToken cancellationToken)
+    {
+        var download = Download(updateId, revision, cancellationToken);
+        if (!download.Succeeded)
+        {
+            return new WindowsUpdateInstallResult(
+                false,
+                download.ResultCode,
+                download.UpdateHResult,
+                RebootRequired: false,
+                download.Message);
+        }
+
+        return InstallPrepared(updateId, revision, cancellationToken);
+    }
+
+    private static SearchBundle? SearchUpdate(
+        IUpdateSession session,
+        string updateId,
+        int revision,
+        WuaComScope scope)
+    {
+        var searcher = session.CreateUpdateSearcher();
+        scope.Track(searcher);
+        var criteria =
+            $"UpdateID='{updateId}' and RevisionNumber={revision.ToString(CultureInfo.InvariantCulture)}";
+
+        ISearchResult searchResult;
+        try
+        {
+            searchResult = searcher.Search(criteria);
+        }
+        catch (COMException ex)
+        {
+            throw new TortoiseException(
+                TortoiseErrorCategory.WindowsUpdateError,
+                "Windows Update could not locate the requested driver package.",
+                $"WUA install search failed: {ex.Message}",
+                ex.HResult,
+                ex);
+        }
+
+        scope.Track(searchResult);
+        if (searchResult.Updates.Count == 0)
+        {
+            return null;
+        }
+
+        var update = searchResult.Updates[0];
+        scope.Track(update);
+        var collection = WuaComFactory.CreateUpdateCollection();
+        scope.Track(collection);
+        collection.Add(update);
+        return new SearchBundle(update, collection);
+    }
+
+    private static WindowsUpdateDownloadResult EvaluateDownloadResult(IDownloadResult downloadResult)
+    {
+        var aggregateCode = (int)downloadResult.ResultCode;
+        var aggregateHResult = downloadResult.HResult;
+        var updateResult = downloadResult.GetUpdateResult(0);
+        var updateCode = (int)updateResult.ResultCode;
+        var updateHResult = updateResult.HResult;
+
+        var succeeded = downloadResult.ResultCode == OperationResultCode.Succeeded
+            && updateResult.ResultCode == OperationResultCode.Succeeded
+            && updateHResult >= 0;
+
+        var message = succeeded
+            ? "Windows Update reported that the driver package download completed for the requested update."
+            : $"Windows Update download failed for the requested update (aggregate={aggregateCode}, update={updateCode}, HRESULT=0x{updateHResult:X8}, aggregate HRESULT=0x{aggregateHResult:X8}).";
+
+        return new WindowsUpdateDownloadResult(succeeded, updateCode, updateHResult, message);
+    }
+
+    private static WindowsUpdateInstallResult EvaluateInstallationResult(
+        IInstallationResult installationResult,
+        bool rebootRequired)
+    {
+        var aggregateCode = (int)installationResult.ResultCode;
+        var aggregateHResult = installationResult.HResult;
+        var updateResult = installationResult.GetUpdateResult(0);
+        var updateCode = (int)updateResult.ResultCode;
+        var updateHResult = updateResult.HResult;
+
+        var succeeded = installationResult.ResultCode == OperationResultCode.Succeeded
+            && updateResult.ResultCode == OperationResultCode.Succeeded
+            && updateHResult >= 0;
+
+        var message = succeeded
+            ? "Windows Update reported that driver installation completed for the requested update."
+            : $"Windows Update install failed for the requested update (aggregate={aggregateCode}, update={updateCode}, HRESULT=0x{updateHResult:X8}, aggregate HRESULT=0x{aggregateHResult:X8}).";
+
+        return new WindowsUpdateInstallResult(succeeded, updateCode, updateHResult, rebootRequired, message);
+    }
+
+    private sealed record SearchBundle(IUpdate Update, IUpdateCollection Collection);
+
+    private sealed class WuaComScope : IDisposable
+    {
+        private readonly List<object> _objects = [];
+
+        internal void Track(object comObject)
+        {
+            if (comObject is not null)
+            {
+                _objects.Add(comObject);
+            }
+        }
+
+        public void Dispose()
+        {
+            for (var index = _objects.Count - 1; index >= 0; index--)
+            {
+                WuaComFactory.ReleaseComObject(_objects[index]);
+            }
+        }
     }
 }

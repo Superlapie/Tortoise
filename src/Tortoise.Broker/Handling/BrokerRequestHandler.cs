@@ -159,24 +159,40 @@ public sealed class BrokerRequestHandler
                 authority.Message);
         }
 
-        if (_liveInstallVerifier is not null)
+        var policy = BrokerInstallPolicyGuard.ValidateStoredPlanPolicy(authority.StoredPlan);
+        if (!policy.IsAuthorized || policy.StoredPlan is null)
         {
-            var toctou = await _liveInstallVerifier.VerifyInstallBoundaryAsync(
-                authority.StoredPlan,
-                payload,
-                cancellationToken);
-
-            if (!toctou.IsAuthorized)
-            {
-                return new BrokerResponse(
-                    request.RequestId,
-                    false,
-                    BrokerErrorCode.PlanValidationFailed,
-                    toctou.Message);
-            }
+            return new BrokerResponse(
+                request.RequestId,
+                false,
+                BrokerErrorCode.PlanValidationFailed,
+                policy.Message);
         }
 
-        var installResult = await _installService.InstallAsync(
+        if (_liveInstallVerifier is null)
+        {
+            return new BrokerResponse(
+                request.RequestId,
+                false,
+                BrokerErrorCode.MutationDisabled,
+                "Broker live install verification is not configured.");
+        }
+
+        var toctou = await _liveInstallVerifier.VerifyInstallBoundaryAsync(
+            policy.StoredPlan,
+            payload,
+            cancellationToken);
+
+        if (!toctou.IsAuthorized)
+        {
+            return new BrokerResponse(
+                request.RequestId,
+                false,
+                BrokerErrorCode.PlanValidationFailed,
+                toctou.Message);
+        }
+
+        var installResult = await _installService.InstallPreparedAsync(
             payload.UpdateId,
             payload.Revision);
 

@@ -215,6 +215,20 @@ internal interface IDownloadResult
 
     [DispId(0x60020002)]
     OperationResultCode ResultCode { get; }
+
+    IUpdateDownloadResult GetUpdateResult([In] int index);
+}
+
+[ComImport]
+[Guid("756CB0B0-BDD9-4B53-8437-765F95F75978")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IUpdateDownloadResult
+{
+    [DispId(0x60020001)]
+    int HResult { get; }
+
+    [DispId(0x60020002)]
+    OperationResultCode ResultCode { get; }
 }
 
 [ComImport]
@@ -253,5 +267,19 @@ internal interface IInstallationResult
     bool RebootRequired { get; }
 
     [DispId(0x60020003)]
+    OperationResultCode ResultCode { get; }
+
+    IUpdateInstallationResult GetUpdateResult([In] int index);
+}
+
+[ComImport]
+[Guid("31C966BC-16BB-43CB-8861-B509B0AF6B47")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IUpdateInstallationResult
+{
+    [DispId(0x60020001)]
+    int HResult { get; }
+
+    [DispId(0x60020002)]
     OperationResultCode ResultCode { get; }
 }

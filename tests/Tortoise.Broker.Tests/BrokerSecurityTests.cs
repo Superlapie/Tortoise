@@ -139,6 +139,31 @@ public sealed class BrokerRequestHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_rejects_install_when_live_verifier_missing()
+    {
+        var handler = CreateHandler(
+            allowDriverInstall: true,
+            environment: new ExecutionEnvironmentInfo(true, true, true),
+            installService: new FakeWindowsUpdateDriverInstallService(),
+            planAuthority: new FakeBrokerPlanAuthority(authorized: true),
+            liveInstallVerifier: null,
+            useDefaultLiveVerifier: false);
+
+        var request = BrokerRequestFactory.CreateInstallDriver(
+            TestSessionId,
+            TestCapability,
+            Guid.NewGuid(),
+            new string('A', 64),
+            Guid.NewGuid().ToString(),
+            1);
+
+        var response = await handler.HandleAsync(request, CreateOptions(true), CancellationToken.None);
+
+        Assert.False(response.Succeeded);
+        Assert.Equal(BrokerErrorCode.MutationDisabled, response.ErrorCode);
+    }
+
+    [Fact]
     public async Task HandleAsync_install_driver_uses_fake_install_service_in_vm_mode()
     {
         var planId = Guid.NewGuid();
@@ -198,7 +223,8 @@ public sealed class BrokerRequestHandlerTests
         ExecutionEnvironmentInfo? environment = null,
         IWindowsUpdateDriverInstallService? installService = null,
         IBrokerPlanAuthority? planAuthority = null,
-        IBrokerLiveInstallVerifier? liveInstallVerifier = null)
+        IBrokerLiveInstallVerifier? liveInstallVerifier = null,
+        bool useDefaultLiveVerifier = true)
     {
         return new BrokerRequestHandler(
             CreateOptions(allowDriverInstall),
@@ -206,7 +232,7 @@ public sealed class BrokerRequestHandlerTests
                 environment ?? new ExecutionEnvironmentInfo(false, false, false)),
             planAuthority ?? new FakeBrokerPlanAuthority(authorized: true),
             installService,
-            liveInstallVerifier ?? new FakeBrokerLiveInstallVerifier());
+            useDefaultLiveVerifier ? liveInstallVerifier ?? new FakeBrokerLiveInstallVerifier() : liveInstallVerifier);
     }
 
     private sealed class FakeBrokerLiveInstallVerifier : IBrokerLiveInstallVerifier
@@ -220,15 +246,28 @@ public sealed class BrokerRequestHandlerTests
 
     private sealed class FakeWindowsUpdateDriverInstallService : IWindowsUpdateDriverInstallService
     {
-        public Task<WindowsUpdateInstallResult> InstallAsync(
+        public Task<WindowsUpdateDownloadResult> DownloadAsync(
+            string updateId,
+            int revision,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new WindowsUpdateDownloadResult(true, 2, 0, "Fake download completed."));
+
+        public Task<WindowsUpdateInstallResult> InstallPreparedAsync(
             string updateId,
             int revision,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(new WindowsUpdateInstallResult(
                 true,
                 ResultCode: 2,
+                UpdateHResult: 0,
                 RebootRequired: false,
                 "Fake Windows Update install completed."));
+
+        public Task<WindowsUpdateInstallResult> InstallAsync(
+            string updateId,
+            int revision,
+            CancellationToken cancellationToken = default) =>
+            InstallPreparedAsync(updateId, revision, cancellationToken);
     }
 
     private sealed class FakeBrokerPlanAuthority : IBrokerPlanAuthority

@@ -71,8 +71,10 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddTortoiseVmDriverInstall(this IServiceCollection services)
     {
         services.AddTortoiseUpdatePlanning();
+        services.AddTortoiseWindowsUpdate();
         services.AddSingleton<IExecutionEnvironmentDetector, WindowsExecutionEnvironmentDetector>();
         services.AddSingleton<IRealPostInstallVerificationService, RealPostInstallVerificationService>();
+        services.AddSingleton<IRealTransactionRecoveryService, RealTransactionRecoveryService>();
         services.AddSingleton<IVmDriverInstallService, VmDriverInstallService>();
         return services;
     }

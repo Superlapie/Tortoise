@@ -10,7 +10,7 @@ This document tracks audit remediation after Batch 14. The accurate status is: *
 - Physical pilot confirmation remains non-mutating (readiness recording only)
 - Added `MutationServicingLock` to prevent concurrent real servicing
 
-**Still open:** compile-time isolation (`Tortoise.MutationLab` split) so public binaries cannot reference real mutation code at all.
+**Still open:** compile-time isolation (`Tortoise.MutationLab` split) so public binaries cannot reference real mutation code at all. `tortoise-lab-broker` is now a separate executable absent from public release packaging.
 
 ## Phase 1 — Windows interop and WUA
 
@@ -28,7 +28,7 @@ This document tracks audit remediation after Batch 14. The accurate status is: *
 - Unmapped driver scan results produce `Unknown` device state (fail-closed), not `Current`
 - Signature/source provenance no longer fabricated as trusted Windows Update
 
-**Still open:** full WUA IDL audit of every remaining IID/DISPID; Windows CI target 110/110 on `windows-latest`.
+**Still open:** full WUA IDL audit of every remaining IID/DISPID; WUA download/install runtime proof requires disposable VM harness (not hosted CI).
 
 ## Phase 2 — Broker trust
 
@@ -36,8 +36,12 @@ This document tracks audit remediation after Batch 14. The accurate status is: *
 - Named-pipe ACL (current user only on Windows)
 - `BrokerPlanAuthority` reloads persisted plans and validates canonical hash + install payload
 - Elevated broker launch via UAC (`BrokerElevationLauncher`) wired into `tortoise-lab vm install`
-- Broker TOCTOU guard re-checks device presence, installed driver version, live WUA candidate, hardware ID, and classification before install (Windows broker host)
-- Injectable `IBrokerLiveInstallVerifier` for deterministic unit tests on all platforms
+- Elevated broker launch uses `tortoise-lab-broker` (compile-time split from public `Tortoise.Broker`)
+- One-shot elevated broker accepts a single authorized `InstallDriver` request (no startup Ping)
+- Broker fails closed without live verifier; re-validates stored plan risk/classification independently
+- WUA download runs unelevated with persisted `Downloading → Verified` journal states; broker performs install-only boundary
+- WUA per-update `GetUpdateResult(0)` inspection; aggregate `SucceededWithErrors` no longer treated as success
+- `RealTransactionRecoveryService` for `AwaitingReboot` resume and ambiguous `Installing` reconciliation
 
 **Still open:** `%ProgramData%` plan store ACL / cryptographic sealing; pending reboot gate at broker boundary.
 
@@ -55,11 +59,12 @@ This document tracks audit remediation after Batch 14. The accurate status is: *
 - Prerelease tags use numeric `AssemblyVersion`/`FileVersion`; full tag in `InformationalVersion`
 - Package inventory exported as `dependencies.json` (not SPDX/CycloneDX SBOM)
 - Real VM install path writes durable transaction journal entries via `IUpdateTransactionStore`
-- Journal persisted before `PreflightPassed`, `AwaitingElevation`, and `Installing` boundaries
+- Journal persisted before download, verification, elevation, install, and reboot checkpoints
 - Shared `UpdateTransactionJournal` enforces transition validation for simulated and real paths
 - Reboot-required installs end in `AwaitingReboot` (not falsely `Completed`)
 
-**Still open:** signed release binaries, branch protection, clean-VM release smoke test, real package export.
+- Release publish uses separate `artifacts/app` and `artifacts/cli` directories (no case-collision overwrite)
+- Validation jobs use read-only permissions; attestation/write permissions scoped to release job only
 
 ## Usage
 

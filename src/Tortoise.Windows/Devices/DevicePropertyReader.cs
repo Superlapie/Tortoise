@@ -91,7 +91,8 @@ internal static class DevicePropertyReader
         var className = ReadStringRegistryProperty(infoSet.Handle, ref deviceInfoData, SetupDiRegistryProperty.Class) ?? string.Empty;
         var location = ReadStringRegistryProperty(infoSet.Handle, ref deviceInfoData, SetupDiRegistryProperty.LocationInformation);
         var enumerator = ReadStringRegistryProperty(infoSet.Handle, ref deviceInfoData, SetupDiRegistryProperty.EnumeratorName);
-        var busType = ReadStringRegistryProperty(infoSet.Handle, ref deviceInfoData, SetupDiRegistryProperty.BusTypeGuid);
+        var busTypeGuid = ReadGuidProperty(infoSet.Handle, ref deviceInfoData, SetupDiRegistryProperty.BusTypeGuid);
+        var busType = busTypeGuid?.ToString() ?? string.Empty;
         var parentInstanceId = ReadStringDeviceProperty(infoSet.Handle, ref deviceInfoData, DevPropKeys.DeviceParent);
         var containerId = ReadGuidDeviceProperty(infoSet.Handle, ref deviceInfoData, DevPropKeys.DeviceContainerId);
 

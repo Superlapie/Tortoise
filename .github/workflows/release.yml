@@ -6,13 +6,13 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 jobs:
   validate-linux:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
@@ -27,6 +27,8 @@ jobs:
 
   validate-windows:
     runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
@@ -42,6 +44,10 @@ jobs:
   release:
     needs: [validate-linux, validate-windows]
     runs-on: windows-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     environment: release
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -63,14 +69,14 @@ jobs:
           echo "RELEASE_INFORMATIONAL_VERSION=$informational" >> $env:GITHUB_ENV
           echo "RELEASE_ASSEMBLY_VERSION=$assembly" >> $env:GITHUB_ENV
 
-      - name: Publish portable app
+      - name: Publish WPF app
         shell: pwsh
         run: |
           dotnet publish src/Tortoise.App/Tortoise.App.csproj `
             -c Release `
             -r win-x64 `
             --self-contained false `
-            -o artifacts/portable `
+            -o artifacts/app `
             /p:Version=$env:RELEASE_INFORMATIONAL_VERSION `
             /p:AssemblyVersion=$env:RELEASE_ASSEMBLY_VERSION `
             /p:FileVersion=$env:RELEASE_ASSEMBLY_VERSION `
@@ -83,11 +89,19 @@ jobs:
             -c Release `
             -r win-x64 `
             --self-contained false `
-            -o artifacts/portable `
+            -o artifacts/cli `
             /p:Version=$env:RELEASE_INFORMATIONAL_VERSION `
             /p:AssemblyVersion=$env:RELEASE_ASSEMBLY_VERSION `
             /p:FileVersion=$env:RELEASE_ASSEMBLY_VERSION `
             /p:InformationalVersion=$env:RELEASE_INFORMATIONAL_VERSION
+
+      - name: Stage portable bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/portable/app | Out-Null
+          New-Item -ItemType Directory -Force -Path artifacts/portable/cli | Out-Null
+          Copy-Item -Path artifacts/app/* -Destination artifacts/portable/app -Recurse
+          Copy-Item -Path artifacts/cli/* -Destination artifacts/portable/cli -Recurse
 
       - name: Create package inventory
         shell: pwsh

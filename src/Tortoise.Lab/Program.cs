@@ -111,7 +111,7 @@ public static class Program
         await scanStore.InitializeAsync();
 
         var brokerHostOptions = CreateBrokerHostOptions(args);
-        await StartBrokerServerIfNeededAsync(brokerHostOptions with { AllowDriverInstall = true });
+        await EnsureElevatedBrokerReadyAsync(brokerHostOptions with { AllowDriverInstall = true });
         var brokerOptions = new Tortoise.Core.Planning.BrokerPlanValidationOptions(
             brokerHostOptions.SessionId,
             brokerHostOptions.CapabilityToken,
@@ -146,7 +146,7 @@ public static class Program
 
         var options = CreateBrokerHostOptions(args) with { AllowDriverInstall = true };
         Console.WriteLine($"Broker listening on pipe '{options.GetEffectivePipeName()}'");
-        await BrokerHost.RunOnceAsync(options);
+        await BrokerHost.RunAuthorizedInstallOnceAsync(options);
         return 0;
     }
 
@@ -165,21 +165,8 @@ public static class Program
         };
     }
 
-    private static async Task StartBrokerServerIfNeededAsync(BrokerHostOptions options)
+    private static async Task EnsureElevatedBrokerReadyAsync(BrokerHostOptions options)
     {
-        var client = new BrokerPipeClient();
-        try
-        {
-            _ = await client.SendAsync(
-                options with { ConnectTimeoutMs = 250 },
-                BrokerRequestFactory.Create(BrokerOperation.Ping, options.SessionId, options.CapabilityToken));
-            return;
-        }
-        catch
-        {
-            // Broker is not already running; launch an elevated broker host.
-        }
-
         if (!OperatingSystem.IsWindows())
         {
             throw new InvalidOperationException("Elevated broker launch requires Windows.");
@@ -188,26 +175,12 @@ public static class Program
         if (!BrokerElevationLauncher.TryLaunchElevatedBroker(options, out var launchError))
         {
             throw new InvalidOperationException(
-                launchError ?? "Failed to launch the elevated Tortoise broker.");
+                launchError ?? "Failed to launch the elevated Tortoise lab broker.");
         }
 
-        for (var attempt = 0; attempt < 20; attempt++)
-        {
-            await Task.Delay(250);
-            try
-            {
-                _ = await client.SendAsync(
-                    options with { ConnectTimeoutMs = 500 },
-                    BrokerRequestFactory.Create(BrokerOperation.Ping, options.SessionId, options.CapabilityToken));
-                return;
-            }
-            catch
-            {
-                // Broker may still be starting after UAC elevation.
-            }
-        }
-
-        throw new InvalidOperationException("Elevated Tortoise broker did not become reachable.");
+        await BrokerPipeAvailability.WaitUntilReadyAsync(
+            options.GetEffectivePipeName(),
+            TimeSpan.FromSeconds(30));
     }
 
     private static void ConfigureDatabasePath(Tortoise.Persistence.Options.TortoisePersistenceOptions options, string[] args)

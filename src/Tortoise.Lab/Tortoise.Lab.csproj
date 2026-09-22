@@ -14,6 +14,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Tortoise.LabBroker\Tortoise.LabBroker.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
     <ProjectReference Include="..\Tortoise.Broker\Tortoise.Broker.csproj" />
     <ProjectReference Include="..\Tortoise.Contracts\Tortoise.Contracts.csproj" />
     <ProjectReference Include="..\Tortoise.Core\Tortoise.Core.csproj" />
@@ -22,5 +25,12 @@
     <ProjectReference Include="..\Tortoise.Windows\Tortoise.Windows.csproj" />
     <ProjectReference Include="..\Tortoise.WindowsUpdate\Tortoise.WindowsUpdate.csproj" />
   </ItemGroup>
+
+  <Target Name="CopyLabBroker" AfterTargets="Build">
+    <ItemGroup>
+      <LabBrokerFiles Include="..\Tortoise.LabBroker\bin\$(Configuration)\$(TargetFramework)\tortoise-lab-broker.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(LabBrokerFiles)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

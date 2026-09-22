@@ -190,7 +190,29 @@ public sealed class VmDriverInstallServiceTests
             new FakeUpdateTransactionStore(),
             new RealPostInstallVerificationService(),
             brokerPlanValidationClient: null,
-            brokerDriverInstallClient: brokerInstallClient);
+            brokerDriverInstallClient: brokerInstallClient,
+            windowsUpdateDriverInstallService: new FakeWindowsUpdateDriverInstallService());
+    }
+
+    private sealed class FakeWindowsUpdateDriverInstallService : IWindowsUpdateDriverInstallService
+    {
+        public Task<WindowsUpdateDownloadResult> DownloadAsync(
+            string updateId,
+            int revision,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new WindowsUpdateDownloadResult(true, 2, 0, "Fake download completed."));
+
+        public Task<WindowsUpdateInstallResult> InstallPreparedAsync(
+            string updateId,
+            int revision,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new WindowsUpdateInstallResult(true, 2, 0, false, "Fake install completed."));
+
+        public Task<WindowsUpdateInstallResult> InstallAsync(
+            string updateId,
+            int revision,
+            CancellationToken cancellationToken = default) =>
+            InstallPreparedAsync(updateId, revision, cancellationToken);
     }
 
     private static StoredUpdatePlan CreateStoredPlan(DriverRiskLevel riskLevel)

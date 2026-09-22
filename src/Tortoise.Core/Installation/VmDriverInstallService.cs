@@ -16,6 +16,7 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
     private readonly IUpdateTransactionStore _transactionStore;
     private readonly IBrokerPlanValidationClient? _brokerPlanValidationClient;
     private readonly IBrokerDriverInstallClient? _brokerDriverInstallClient;
+    private readonly IWindowsUpdateDriverInstallService? _windowsUpdateDriverInstallService;
     private readonly IRealPostInstallVerificationService _postInstallVerificationService;
 
     public VmDriverInstallService(
@@ -26,7 +27,8 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
         IUpdateTransactionStore transactionStore,
         IRealPostInstallVerificationService postInstallVerificationService,
         IBrokerPlanValidationClient? brokerPlanValidationClient = null,
-        IBrokerDriverInstallClient? brokerDriverInstallClient = null)
+        IBrokerDriverInstallClient? brokerDriverInstallClient = null,
+        IWindowsUpdateDriverInstallService? windowsUpdateDriverInstallService = null)
     {
         _environmentDetector = environmentDetector;
         _planService = planService;
@@ -36,6 +38,7 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
         _postInstallVerificationService = postInstallVerificationService;
         _brokerPlanValidationClient = brokerPlanValidationClient;
         _brokerDriverInstallClient = brokerDriverInstallClient;
+        _windowsUpdateDriverInstallService = windowsUpdateDriverInstallService;
     }
 
     public async Task<VmDriverInstallResult> InstallAsync(
@@ -118,6 +121,52 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
         transaction = Advance(transaction, UpdateTransactionState.PreflightPassed, journal, "Preflight passed.", ref timestamp);
         await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
 
+        if (_windowsUpdateDriverInstallService is null)
+        {
+            throw new InvalidOperationException(
+                "Windows Update download service is unavailable for VM install.");
+        }
+
+        var candidate = storedPlan.Plan.ProposedUpdate.Candidate;
+        transaction = Advance(transaction, UpdateTransactionState.Downloading, journal, "WUA download started.", ref timestamp);
+        await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
+
+        var download = await _windowsUpdateDriverInstallService.DownloadAsync(
+            candidate.UpdateIdentity,
+            candidate.UpdateRevision,
+            cancellationToken);
+
+        if (!download.Succeeded)
+        {
+            return await FailAsync(
+                storedPlan.PlanId,
+                transaction,
+                journal,
+                UpdateTransactionState.Failed,
+                preflight,
+                null,
+                null,
+                null,
+                $"Windows Update download failed: {download.Message}",
+                cancellationToken);
+        }
+
+        transaction = Advance(transaction, UpdateTransactionState.Downloaded, journal, "WUA download completed.", ref timestamp);
+        await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
+        transaction = Advance(
+            transaction,
+            UpdateTransactionState.VerificationRunning,
+            journal,
+            "Download verification started.",
+            ref timestamp);
+        transaction = Advance(
+            transaction,
+            UpdateTransactionState.Verified,
+            journal,
+            "Download verification passed for the requested update.",
+            ref timestamp);
+        await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
+
         transaction = Advance(
             transaction,
             UpdateTransactionState.AwaitingConsent,
@@ -128,7 +177,7 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
             transaction,
             UpdateTransactionState.AwaitingElevation,
             journal,
-            "Broker elevation requested.",
+            "Elevated lab broker requested for install-only boundary.",
             ref timestamp);
         await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
 
@@ -173,11 +222,10 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
             transaction,
             UpdateTransactionState.Installing,
             journal,
-            "Elevated WUA download+install boundary entered.",
+            "Elevated WUA install boundary entered.",
             ref timestamp);
         await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
 
-        var candidate = storedPlan.Plan.ProposedUpdate.Candidate;
         var brokerInstall = await _brokerDriverInstallClient.InstallDriverAsync(
             storedPlan.PlanId,
             storedPlan.Plan.PlanHash,

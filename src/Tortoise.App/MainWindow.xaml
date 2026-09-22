@@ -83,7 +83,7 @@
                                 Style="{StaticResource AccentButtonStyle}"
                                 Command="{Binding ScanAgainCommand}" />
                     </StackPanel>
-                    <TextBlock Text="Read-only build — real driver mutation is structurally disabled."
+                    <TextBlock Text="Read-only build — real driver mutation is runtime-guarded in public binaries."
                                VerticalAlignment="Center"
                                Foreground="{DynamicResource MutedForegroundBrush}" />
                 </DockPanel>

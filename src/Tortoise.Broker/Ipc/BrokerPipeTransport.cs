@@ -133,6 +133,21 @@ public sealed record BrokerHostOptions
             return false;
         }
 
+        return IsDisposableVmMutationEnabled();
+    }
+
+    public static bool ShouldAllowLabBrokerDriverInstall()
+    {
+        if (!MutationBuildPolicy.IsLabBrokerBuild)
+        {
+            return false;
+        }
+
+        return IsDisposableVmMutationEnabled();
+    }
+
+    private static bool IsDisposableVmMutationEnabled()
+    {
         IExecutionEnvironmentDetector detector = OperatingSystem.IsWindows()
             ? new WindowsExecutionEnvironmentDetector()
             : new UnsupportedExecutionEnvironmentDetector();
@@ -144,6 +159,9 @@ public sealed record BrokerHostOptions
 
 public static class BrokerHost
 {
+    public static Task RunAuthorizedInstallOnceAsync(BrokerHostOptions options, CancellationToken cancellationToken = default) =>
+        RunOnceAsync(options, cancellationToken);
+
     public static Task RunOnceAsync(BrokerHostOptions options, CancellationToken cancellationToken = default)
     {
         IExecutionEnvironmentDetector detector = OperatingSystem.IsWindows()
@@ -158,7 +176,7 @@ public static class BrokerHost
         planStore.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
         var planAuthority = new BrokerPlanAuthority(planStore);
 
-        IDeviceInventoryProvider? deviceInventoryProvider = OperatingSystem.IsWindows()
+        IDeviceInventoryProvider? deviceInventoryProvider = options.AllowDriverInstall && OperatingSystem.IsWindows()
             ? new WindowsDeviceInventoryProvider()
             : null;
         IBrokerLiveInstallVerifier? liveInstallVerifier = deviceInventoryProvider is not null
@@ -186,8 +204,9 @@ public static class BrokerElevationLauncher
         error = null;
         try
         {
-            var brokerExe = Path.Combine(AppContext.BaseDirectory, "Tortoise.Broker.exe");
-            var brokerDll = Path.Combine(AppContext.BaseDirectory, "Tortoise.Broker.dll");
+            var brokerExe = Path.Combine(AppContext.BaseDirectory, "tortoise-lab-broker.exe");
+            var brokerDll = Path.Combine(AppContext.BaseDirectory, "tortoise-lab-broker.dll");
+            var legacyBrokerExe = Path.Combine(AppContext.BaseDirectory, "Tortoise.Broker.exe");
             var arguments =
                 $"serve --session-id={options.SessionId} --pipe={options.GetEffectivePipeName()} --capability={options.CapabilityToken}";
 
@@ -212,9 +231,14 @@ public static class BrokerElevationLauncher
                     Verb = "runas",
                 };
             }
+            else if (File.Exists(legacyBrokerExe))
+            {
+                error = "tortoise-lab-broker was not found next to the lab host. Rebuild Tortoise.Lab to deploy the mutation broker.";
+                return false;
+            }
             else
             {
-                error = "Tortoise.Broker executable was not found next to the lab host.";
+                error = "tortoise-lab-broker executable was not found next to the lab host.";
                 return false;
             }
 

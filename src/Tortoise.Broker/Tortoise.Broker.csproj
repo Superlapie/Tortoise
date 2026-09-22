@@ -7,6 +7,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Tortoise.Broker</AssemblyName>
     <RootNamespace>Tortoise.Broker</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
