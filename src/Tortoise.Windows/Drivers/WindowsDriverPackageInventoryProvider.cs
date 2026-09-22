@@ -60,7 +60,18 @@ public sealed class WindowsDriverPackageInventoryProvider : IDriverPackageInvent
             var output = PnPUtilProcessRunner.RunEnumDrivers(preferStructuredOutput: true, out var usedStructuredOutput);
             storePackages = PnPUtilDriverListParser.Parse(output, usedStructuredOutput);
 
-            if (!usedStructuredOutput)
+            if (usedStructuredOutput && storePackages.Count == 0 && LooksLikeLegacyPnPUtilOutput(output))
+            {
+                storePackages = PnPUtilDriverListParser.ParseLegacyText(output);
+                usedStructuredOutput = false;
+                warnings.Add("PnPUtil CSV output did not parse; legacy text output was parsed instead.");
+            }
+
+            if (!usedStructuredOutput && storePackages.Count == 0 && !string.IsNullOrWhiteSpace(output))
+            {
+                warnings.Add("PnPUtil returned output but no third-party driver packages were parsed.");
+            }
+            else if (!usedStructuredOutput)
             {
                 warnings.Add("PnPUtil structured CSV output was unavailable; legacy text output was parsed instead.");
             }
@@ -105,4 +116,8 @@ public sealed class WindowsDriverPackageInventoryProvider : IDriverPackageInvent
             warnings,
             DateTimeOffset.UtcNow);
     }
+
+    private static bool LooksLikeLegacyPnPUtilOutput(string output) =>
+        output.Contains("Published Name:", StringComparison.OrdinalIgnoreCase)
+        || output.Contains("Original Name:", StringComparison.OrdinalIgnoreCase);
 }

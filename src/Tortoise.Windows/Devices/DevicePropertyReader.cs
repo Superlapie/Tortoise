@@ -62,7 +62,6 @@ internal static class DevicePropertyReader
         }
 
         var deviceInfoData = SpDevinfoData.Create();
-        deviceInfoData.DevInst = devInst;
 
         if (!SetupApiNative.OpenDeviceInfo(infoSet.Handle, deviceInstanceId, IntPtr.Zero, 0, ref deviceInfoData))
         {
@@ -71,11 +70,9 @@ internal static class DevicePropertyReader
         }
 
         var classGuid = ReadGuidProperty(infoSet.Handle, ref deviceInfoData, SetupDiRegistryProperty.ClassGuid)
-                        ?? deviceInfoData.ClassGuid;
-        if (classGuid == Guid.Empty)
-        {
-            classGuid = Guid.Empty;
-        }
+                        ?? ReadGuidDeviceProperty(infoSet.Handle, ref deviceInfoData, DevPropKeys.DeviceClassGuid)
+                        ?? ReadClassGuidFromConfigManager(devInst)
+                        ?? NullIfEmpty(deviceInfoData.ClassGuid);
 
         var hardwareIds = ReadMultiStringRegistryProperty(
             infoSet.Handle,
@@ -100,7 +97,7 @@ internal static class DevicePropertyReader
         var identity = new DeviceIdentity(
             deviceInstanceId,
             containerId,
-            classGuid,
+            classGuid ?? Guid.Empty,
             className,
             friendlyName,
             manufacturer,
@@ -248,6 +245,42 @@ internal static class DevicePropertyReader
         return value.Split('\0', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
+    private static Guid? ReadClassGuidFromConfigManager(uint devInst)
+    {
+        var bufferLength = 0u;
+        var sizeResult = ConfigManagerNative.GetDevNodeRegistryProperty(
+            devInst,
+            ConfigRegistryProperty.ClassGuid,
+            out _,
+            [],
+            ref bufferLength,
+            0);
+
+        if (sizeResult != ConfigRet.BufferSmall || bufferLength == 0)
+        {
+            return null;
+        }
+
+        var buffer = new byte[bufferLength];
+        var readResult = ConfigManagerNative.GetDevNodeRegistryProperty(
+            devInst,
+            ConfigRegistryProperty.ClassGuid,
+            out _,
+            buffer,
+            ref bufferLength,
+            0);
+
+        if (readResult != ConfigRet.Success)
+        {
+            return null;
+        }
+
+        var text = TrimNullTerminatedUnicode(buffer);
+        return Guid.TryParse(text, out var guid) ? guid : null;
+    }
+
+    private static Guid? NullIfEmpty(Guid guid) => guid == Guid.Empty ? null : guid;
+
     private static Guid? ReadGuidProperty(
         IntPtr infoSet,
         ref SpDevinfoData deviceInfoData,
@@ -257,7 +290,7 @@ internal static class DevicePropertyReader
                 infoSet,
                 ref deviceInfoData,
                 property,
-                out _,
+                out var propertyRegDataType,
                 [],
                 0,
                 out var requiredSize)
@@ -271,12 +304,17 @@ internal static class DevicePropertyReader
                 infoSet,
                 ref deviceInfoData,
                 property,
-                out _,
+                out propertyRegDataType,
                 buffer,
                 requiredSize,
                 out _))
         {
             return null;
+        }
+
+        if (propertyRegDataType == 3 && buffer.Length >= 16)
+        {
+            return new Guid(buffer.AsSpan(0, 16));
         }
 
         var text = TrimNullTerminatedUnicode(buffer);

@@ -106,6 +106,17 @@ internal static class DevPropKeys
         FormatId = DriverPropertySet,
         PropertyId = 12,
     };
+
+    public static readonly DevPropKey DeviceClassGuid = new()
+    {
+        FormatId = new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"),
+        PropertyId = 14,
+    };
+}
+
+internal enum ConfigRegistryProperty : uint
+{
+    ClassGuid = 0x00000008,
 }
 
 internal static partial class ConfigManagerNative
@@ -134,6 +145,15 @@ internal static partial class ConfigManagerNative
         out uint status,
         out uint problemNumber,
         uint deviceInstanceHandle,
+        uint flags);
+
+    [LibraryImport(NativeLibraries.CfgMgr32, EntryPoint = "CM_Get_DevNode_Registry_PropertyW")]
+    internal static partial ConfigRet GetDevNodeRegistryProperty(
+        uint deviceInstanceHandle,
+        ConfigRegistryProperty property,
+        out uint propertyDataType,
+        byte[] buffer,
+        ref uint bufferLength,
         uint flags);
 }
 

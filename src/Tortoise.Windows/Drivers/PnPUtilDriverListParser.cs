@@ -26,7 +26,7 @@ internal static class PnPUtilDriverListParser
             return packages;
         }
 
-        var headers = SplitCsvLine(headerLine);
+        var headers = SplitCsvLine(headerLine.TrimStart('\uFEFF'));
         string? line;
         while ((line = reader.ReadLine()) is not null)
         {
@@ -74,20 +74,20 @@ internal static class PnPUtilDriverListParser
             map[headers[i].Trim()] = values[i].Trim();
         }
 
-        var publishedInf = Get(map, "Published Name", "Published Inf Name", "Driver Name");
-        var originalInf = Get(map, "Original Name", "Original Inf Name", publishedInf);
-        var provider = Get(map, "Provider Name", "Provider", "Signer Name");
-        var className = Get(map, "Class Name", "Class");
-        var classGuidText = Get(map, "Class GUID", "Class Guid");
-        var versionText = Get(map, "Driver Version", "Version");
-        var dateText = Get(map, "Driver Date", "Date");
+        var publishedInf = Get(map, "Published Name", "Published Inf Name", "Driver Name", "PublishedName");
+        var originalInf = Get(map, "Original Name", "Original Inf Name", "OriginalName", publishedInf);
+        var provider = Get(map, "Provider Name", "Provider", "Signer Name", "ProviderName", "SignerName");
+        var className = Get(map, "Class Name", "Class", "ClassName");
+        var classGuidText = Get(map, "Class GUID", "Class Guid", "ClassGUID");
+        var versionText = Get(map, "Driver Version", "Version", "DriverVersion");
+        var dateText = Get(map, "Driver Date", "Date", "DriverDate");
         var inboxText = Get(map, "Inbox", "Boot Critical", "Is Inbox");
-        var identifier = Get(map, "Extension ID", "Package Name", publishedInf);
+        var identifier = Get(map, "Extension ID", "ExtensionID", "Package Name", publishedInf);
 
         if (string.IsNullOrWhiteSpace(publishedInf)
             || string.IsNullOrWhiteSpace(provider)
-            || !Guid.TryParse(classGuidText, out var classGuid)
-            || !Version.TryParse(versionText, out var version))
+            || !TryParseClassGuid(classGuidText, out var classGuid)
+            || !TryParseDriverVersion(versionText, out var version))
         {
             return false;
         }
@@ -138,8 +138,8 @@ internal static class PnPUtilDriverListParser
 
         if (string.IsNullOrWhiteSpace(publishedInf)
             || string.IsNullOrWhiteSpace(provider)
-            || !Guid.TryParse(classGuidText, out var classGuid)
-            || !Version.TryParse(versionText, out var version))
+            || !TryParseClassGuid(classGuidText, out var classGuid)
+            || !TryParseDriverVersion(versionText, out var version))
         {
             return false;
         }
@@ -156,6 +156,49 @@ internal static class PnPUtilDriverListParser
             identifier);
 
         return true;
+    }
+
+    private static bool TryParseClassGuid(string? value, out Guid classGuid)
+    {
+        classGuid = Guid.Empty;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var normalized = value.Trim();
+        if (normalized.StartsWith('{') && normalized.EndsWith('}'))
+        {
+            normalized = normalized[1..^1];
+        }
+
+        return Guid.TryParse(normalized, out classGuid);
+    }
+
+    private static bool TryParseDriverVersion(string? value, out Version version)
+    {
+        version = new Version(0, 0);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var normalized = value.Trim();
+        if (Version.TryParse(normalized, out var parsedVersion))
+        {
+            version = parsedVersion;
+            return true;
+        }
+
+        var spaceIndex = normalized.LastIndexOf(' ');
+        if (spaceIndex > 0
+            && Version.TryParse(normalized[(spaceIndex + 1)..], out parsedVersion))
+        {
+            version = parsedVersion;
+            return true;
+        }
+
+        return false;
     }
 
     private static IReadOnlyList<string> SplitCsvLine(string line)
