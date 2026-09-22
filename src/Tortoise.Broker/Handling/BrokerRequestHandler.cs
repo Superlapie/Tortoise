@@ -43,6 +43,15 @@ public sealed class BrokerRequestHandler
         BrokerHostOptions options,
         CancellationToken cancellationToken = default)
     {
+        if (options.InstallOnlyMode && request.Operation != BrokerOperation.InstallDriver)
+        {
+            return new BrokerResponse(
+                request.RequestId,
+                false,
+                BrokerErrorCode.OperationNotAllowed,
+                "Lab install broker accepts exactly one InstallDriver request.");
+        }
+
         var validation = _validator.Validate(
             request,
             options.SessionId,

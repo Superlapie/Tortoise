@@ -111,6 +111,9 @@ internal interface IUpdate
     [DispId(0x60020012)]
     bool IsInstalled { get; }
 
+    [DispId(0x6002001A)]
+    bool IsDownloaded { get; }
+
     [DispId(0x60020022)]
     string SupportUrl { get; }
 }

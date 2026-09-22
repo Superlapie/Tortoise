@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
 using Tortoise.Broker.Validation;
 using Tortoise.Core.Installation;
@@ -16,6 +17,13 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddTortoiseBrokerDriverInstall(this IServiceCollection services)
     {
         services.AddSingleton<IBrokerDriverInstallClient, BrokerDriverInstallClient>();
+        return services;
+    }
+
+    [SupportedOSPlatform("windows")]
+    public static IServiceCollection AddTortoiseLabBrokerElevation(this IServiceCollection services)
+    {
+        services.AddSingleton<ILabElevatedBrokerLauncher, LabElevatedBrokerLauncher>();
         return services;
     }
 }

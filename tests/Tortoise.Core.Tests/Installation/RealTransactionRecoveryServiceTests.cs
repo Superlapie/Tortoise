@@ -41,6 +41,60 @@ public sealed class RealTransactionRecoveryServiceTests
         Assert.Equal(UpdateTransactionState.Completed, result.FinalState);
     }
 
+    [Theory]
+    [InlineData(UpdateTransactionState.Installing)]
+    [InlineData(UpdateTransactionState.InstallReturned)]
+    public async Task ReconcileIncompleteAsync_moves_ambiguous_install_states_through_failed_to_recovery_required(
+        UpdateTransactionState initialState)
+    {
+        var storedPlan = CreateStoredPlan();
+        var transactionId = Guid.NewGuid();
+        var record = new UpdateTransactionRecord(
+            new UpdateTransaction(
+                transactionId,
+                storedPlan.PlanId,
+                initialState,
+                DateTimeOffset.UtcNow),
+            []);
+
+        var service = new RealTransactionRecoveryService(
+            new FakeUpdateTransactionStore(record),
+            new FakeUpdatePlanService(storedPlan),
+            new StaticDeviceInventoryProvider(CreateDevice(new Version(2, 0))),
+            new RealPostInstallVerificationService());
+
+        var result = await service.ReconcileIncompleteAsync(transactionId);
+
+        Assert.Equal(UpdateTransactionState.RecoveryRequired, result.FinalState);
+        Assert.True(result.CompletedSuccessfully);
+    }
+
+    [Fact]
+    public async Task ReconcileIncompleteAsync_moves_restart_required_to_awaiting_reboot()
+    {
+        var storedPlan = CreateStoredPlan();
+        var transactionId = Guid.NewGuid();
+        var record = new UpdateTransactionRecord(
+            new UpdateTransaction(
+                transactionId,
+                storedPlan.PlanId,
+                UpdateTransactionState.RestartRequired,
+                DateTimeOffset.UtcNow),
+            []);
+
+        var service = new RealTransactionRecoveryService(
+            new FakeUpdateTransactionStore(record),
+            new FakeUpdatePlanService(storedPlan),
+            new StaticDeviceInventoryProvider(CreateDevice(new Version(1, 0))),
+            new RealPostInstallVerificationService());
+
+        var result = await service.ReconcileIncompleteAsync(transactionId);
+
+        Assert.Equal(UpdateTransactionState.AwaitingReboot, result.FinalState);
+        Assert.False(result.CompletedSuccessfully);
+        Assert.Equal(UpdateVerificationResult.InstalledRestartRequired, result.PostInstallVerification?.Result);
+    }
+
     private static StoredUpdatePlan CreateStoredPlan()
     {
         var recommendation = new DeviceUpdateRecommendation(

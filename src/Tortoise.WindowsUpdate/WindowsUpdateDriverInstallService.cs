@@ -24,6 +24,15 @@ public sealed class WindowsUpdateDriverInstallService : IWindowsUpdateDriverInst
         return Task.FromResult(WuaInstallExecutor.InstallPrepared(updateId, revision, cancellationToken));
     }
 
+    public Task<bool> IsUpdatePreparedAsync(
+        string updateId,
+        int revision,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureWindows();
+        return Task.FromResult(WuaInstallExecutor.IsUpdatePrepared(updateId, revision, cancellationToken));
+    }
+
     public Task<WindowsUpdateInstallResult> InstallAsync(
         string updateId,
         int revision,

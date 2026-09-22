@@ -110,6 +110,10 @@ public sealed record BrokerHostOptions
 
     public bool AllowDriverInstall { get; init; }
 
+    public bool InstallOnlyMode { get; init; }
+
+    public string? DatabasePath { get; init; }
+
     public string GetEffectivePipeName() =>
         PipeName ?? ElevationConstants.GetPipeName(SessionId, CapabilityToken);
 
@@ -172,7 +176,18 @@ public static class BrokerHost
             ? new WindowsUpdateDriverInstallService()
             : null;
 
-        var planStore = new SqliteUpdatePlanStore(new Tortoise.Persistence.Options.TortoisePersistenceOptions());
+        var persistenceOptions = new Tortoise.Persistence.Options.TortoisePersistenceOptions();
+        if (!string.IsNullOrWhiteSpace(options.DatabasePath))
+        {
+            if (!BrokerDatabasePathValidator.TryValidate(options.DatabasePath, out var databasePath, out var validationError))
+            {
+                throw new InvalidOperationException(validationError ?? "Broker database path is invalid.");
+            }
+
+            persistenceOptions.DatabasePath = databasePath;
+        }
+
+        var planStore = new SqliteUpdatePlanStore(persistenceOptions);
         planStore.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
         var planAuthority = new BrokerPlanAuthority(planStore);
 
@@ -209,6 +224,12 @@ public static class BrokerElevationLauncher
             var legacyBrokerExe = Path.Combine(AppContext.BaseDirectory, "Tortoise.Broker.exe");
             var arguments =
                 $"serve --session-id={options.SessionId} --pipe={options.GetEffectivePipeName()} --capability={options.CapabilityToken}";
+
+            if (!string.IsNullOrWhiteSpace(options.DatabasePath)
+                && BrokerDatabasePathValidator.TryValidate(options.DatabasePath, out var databasePath, out _))
+            {
+                arguments += $" --db=\"{databasePath}\"";
+            }
 
             System.Diagnostics.ProcessStartInfo startInfo;
             if (File.Exists(brokerExe))

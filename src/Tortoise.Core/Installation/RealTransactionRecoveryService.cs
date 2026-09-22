@@ -1,5 +1,4 @@
 using Tortoise.Core.Devices;
-using Tortoise.Core.Installation;
 using Tortoise.Core.Planning;
 using Tortoise.Core.Transactions;
 using Tortoise.Core.Updates;
@@ -65,7 +64,8 @@ public sealed class RealTransactionRecoveryService : IRealTransactionRecoverySer
         return record.Transaction.State switch
         {
             UpdateTransactionState.AwaitingReboot => await CompletePostRebootVerificationAsync(record, cancellationToken),
-            UpdateTransactionState.Installing or UpdateTransactionState.InstallReturned or UpdateTransactionState.RestartRequired =>
+            UpdateTransactionState.RestartRequired => await ReconcileRestartRequiredAsync(record, cancellationToken),
+            UpdateTransactionState.Installing or UpdateTransactionState.InstallReturned =>
                 await ReconcileAmbiguousInstallAsync(record, cancellationToken),
             _ => throw new InvalidOperationException(
                 $"Transaction '{transactionId}' is not in a recoverable incomplete state (state={record.Transaction.State})."),
@@ -132,6 +132,34 @@ public sealed class RealTransactionRecoveryService : IRealTransactionRecoverySer
             verification);
     }
 
+    private async Task<RealTransactionRecoveryResult> ReconcileRestartRequiredAsync(
+        UpdateTransactionRecord record,
+        CancellationToken cancellationToken)
+    {
+        var journal = record.Journal.ToList();
+        var transaction = record.Transaction;
+        var timestamp = DateTimeOffset.UtcNow;
+        transaction = Advance(
+            transaction,
+            UpdateTransactionState.AwaitingReboot,
+            journal,
+            "Restart requirement reconciled after interruption; transaction remains open until reboot verification.",
+            ref timestamp);
+
+        await _transactionStore.SaveAsync(new UpdateTransactionRecord(transaction, journal), cancellationToken);
+
+        return new RealTransactionRecoveryResult(
+            transaction.TransactionId,
+            transaction.State,
+            false,
+            "Transaction reconciled to awaiting reboot.",
+            new UpdateVerification(
+                transaction.TransactionId,
+                UpdateVerificationResult.InstalledRestartRequired,
+                "Install reported restart required before Tortoise persisted awaiting reboot.",
+                DateTimeOffset.UtcNow));
+    }
+
     private async Task<RealTransactionRecoveryResult> ReconcileAmbiguousInstallAsync(
         UpdateTransactionRecord record,
         CancellationToken cancellationToken)
@@ -152,9 +180,15 @@ public sealed class RealTransactionRecoveryService : IRealTransactionRecoverySer
         var timestamp = DateTimeOffset.UtcNow;
         transaction = Advance(
             transaction,
+            UpdateTransactionState.Failed,
+            journal,
+            "Install outcome was ambiguous after interruption.",
+            ref timestamp);
+        transaction = Advance(
+            transaction,
             UpdateTransactionState.RecoveryRequired,
             journal,
-            "Install outcome was ambiguous after interruption; manual inspection is required before retrying.",
+            "Manual inspection is required before retrying.",
             ref timestamp);
 
         var baselineDevice = CreateBaselineDevice(storedPlan);

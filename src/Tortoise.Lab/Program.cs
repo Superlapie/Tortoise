@@ -5,6 +5,7 @@ using Tortoise.Contracts.Elevation;
 using Tortoise.Contracts.Mutation;
 using Tortoise.Core.Installation;
 using Tortoise.Core.Mutation;
+using Tortoise.Core.Planning;
 using Tortoise.Core.ScanSessions;
 using Tortoise.Persistence.Extensions;
 using Tortoise.Security.Broker;
@@ -40,8 +41,8 @@ public static class Program
         Console.WriteLine("Tortoise.Lab (mutation testing — isolated VM only)");
         Console.WriteLine();
         Console.WriteLine("  tortoise-lab status");
-        Console.WriteLine("  tortoise-lab vm install <plan-id> [--skip-broker-validate] [--db=path]");
-        Console.WriteLine("  tortoise-lab broker serve [--session-id=N] [--pipe=name] [--capability=token]");
+        Console.WriteLine("  tortoise-lab vm install <plan-id> [--db=path]");
+        Console.WriteLine("  tortoise-lab broker serve [--session-id=N] [--pipe=name] [--capability=token] [--db=path]");
         return 0;
     }
 
@@ -93,17 +94,15 @@ public static class Program
 
         if (args.Length < 3 || !Guid.TryParse(args[2], out var planId))
         {
-            Console.Error.WriteLine("Usage: tortoise-lab vm install <plan-id> [--skip-broker-validate] [--db=path]");
+            Console.Error.WriteLine("Usage: tortoise-lab vm install <plan-id> [--db=path]");
             return 1;
         }
 
-        var skipBrokerValidate = Array.Exists(args, arg =>
-            string.Equals(arg, "--skip-broker-validate", StringComparison.OrdinalIgnoreCase));
         var services = new ServiceCollection();
         services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
         services.AddTortoiseVmDriverInstall();
-        services.AddTortoiseBrokerPlanValidation();
         services.AddTortoiseBrokerDriverInstall();
+        services.AddTortoiseLabBrokerElevation();
 
         var provider = services.BuildServiceProvider();
         var scanStore = provider.GetRequiredService<IScanSessionStore>();
@@ -111,20 +110,18 @@ public static class Program
         await scanStore.InitializeAsync();
 
         var brokerHostOptions = CreateBrokerHostOptions(args);
-        await EnsureElevatedBrokerReadyAsync(brokerHostOptions with { AllowDriverInstall = true });
-        var brokerOptions = new Tortoise.Core.Planning.BrokerPlanValidationOptions(
+        var brokerOptions = new BrokerPlanValidationOptions(
             brokerHostOptions.SessionId,
             brokerHostOptions.CapabilityToken,
             brokerHostOptions.PipeName,
-            brokerHostOptions.ConnectTimeoutMs);
+            brokerHostOptions.ConnectTimeoutMs,
+            ParseStringArg(args, "--db="));
 
         try
         {
             var result = await installService.InstallAsync(
                 planId,
-                new VmDriverInstallOptions(
-                    RequireBrokerValidation: !skipBrokerValidate,
-                    BrokerOptions: brokerOptions));
+                new VmDriverInstallOptions(BrokerOptions: brokerOptions));
 
             Console.WriteLine(result.Summary);
             return result.CompletedSuccessfully ? 0 : 2;
@@ -144,7 +141,12 @@ public static class Program
             return 1;
         }
 
-        var options = CreateBrokerHostOptions(args) with { AllowDriverInstall = true };
+        var options = CreateBrokerHostOptions(args) with
+        {
+            AllowDriverInstall = true,
+            InstallOnlyMode = true,
+            DatabasePath = ParseStringArg(args, "--db="),
+        };
         Console.WriteLine($"Broker listening on pipe '{options.GetEffectivePipeName()}'");
         await BrokerHost.RunAuthorizedInstallOnceAsync(options);
         return 0;
@@ -163,24 +165,6 @@ public static class Program
             PipeName = pipeName ?? ElevationConstants.GetPipeName(sessionId, capability),
             AllowDriverInstall = BrokerHostOptions.ShouldAllowDriverInstall(),
         };
-    }
-
-    private static async Task EnsureElevatedBrokerReadyAsync(BrokerHostOptions options)
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            throw new InvalidOperationException("Elevated broker launch requires Windows.");
-        }
-
-        if (!BrokerElevationLauncher.TryLaunchElevatedBroker(options, out var launchError))
-        {
-            throw new InvalidOperationException(
-                launchError ?? "Failed to launch the elevated Tortoise lab broker.");
-        }
-
-        await BrokerPipeAvailability.WaitUntilReadyAsync(
-            options.GetEffectivePipeName(),
-            TimeSpan.FromSeconds(30));
     }
 
     private static void ConfigureDatabasePath(Tortoise.Persistence.Options.TortoisePersistenceOptions options, string[] args)

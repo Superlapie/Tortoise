@@ -5,8 +5,14 @@ using Tortoise.Core.Updates;
 namespace Tortoise.Core.Installation;
 
 public sealed record VmDriverInstallOptions(
-    bool RequireBrokerValidation = false,
     BrokerPlanValidationOptions? BrokerOptions = null);
+
+public interface ILabElevatedBrokerLauncher
+{
+    Task LaunchAndWaitAsync(
+        BrokerPlanValidationOptions options,
+        CancellationToken cancellationToken = default);
+}
 
 public sealed record BrokerDriverInstallResult(
     bool Succeeded,
@@ -51,6 +57,11 @@ public interface IWindowsUpdateDriverInstallService
         CancellationToken cancellationToken = default);
 
     Task<WindowsUpdateInstallResult> InstallPreparedAsync(
+        string updateId,
+        int revision,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> IsUpdatePreparedAsync(
         string updateId,
         int revision,
         CancellationToken cancellationToken = default);

@@ -38,6 +38,47 @@ public sealed class RealPostInstallVerificationServiceTests
         Assert.Equal(UpdateVerificationResult.Failed, verification.Result);
     }
 
+    [Fact]
+    public void VerifyPostInstall_uses_evidence_when_wua_driver_version_is_unknown()
+    {
+        var storedPlan = CreateStoredPlanWithUnknownVersion();
+        var before = CreateDevice(new Version(1, 0), "old.inf");
+        var after = CreateDevice(new Version(31, 0, 101, 5590), "new.inf");
+
+        var verification = _service.VerifyPostInstall(storedPlan, before, after, Guid.NewGuid());
+
+        Assert.Equal(UpdateVerificationResult.Verified, verification.Result);
+    }
+
+    private static StoredUpdatePlan CreateStoredPlanWithUnknownVersion()
+    {
+        var recommendation = new DeviceUpdateRecommendation(
+            CreateDevice(new Version(1, 0), "old.inf"),
+            new WindowsUpdateCandidate(
+                "update-id",
+                1,
+                "Intel Network Driver",
+                null,
+                "Intel",
+                "Net",
+                "Intel Adapter",
+                null,
+                null,
+                UpdateClassification.WindowsRecommended,
+                false,
+                false,
+                false,
+                false,
+                []),
+            UpdateClassification.WindowsRecommended,
+            DriverRiskLevel.Low,
+            "Recommended by Windows",
+            "Explanation",
+            DateTimeOffset.UtcNow);
+
+        return UpdatePlanBuilder.CreateStoredPlan(recommendation, scanSessionId: 1);
+    }
+
     private static StoredUpdatePlan CreateStoredPlan(Version proposedVersion)
     {
         var recommendation = new DeviceUpdateRecommendation(
@@ -67,7 +108,7 @@ public sealed class RealPostInstallVerificationServiceTests
         return UpdatePlanBuilder.CreateStoredPlan(recommendation, scanSessionId: 1);
     }
 
-    private static DeviceInventoryEntry CreateDevice(Version installedVersion)
+    private static DeviceInventoryEntry CreateDevice(Version installedVersion, string infName = "intel.inf")
     {
         return new DeviceInventoryEntry(
             new DeviceSnapshot(
@@ -87,7 +128,7 @@ public sealed class RealPostInstallVerificationServiceTests
                     true),
                 new DeviceHealth(DeviceHealthState.Healthy, null, null),
                 DateTimeOffset.UtcNow),
-            new DeviceDriverBinding("Intel", installedVersion, null, "intel.inf"));
+            new DeviceDriverBinding("Intel", installedVersion, null, infName));
     }
 }
 
@@ -115,9 +156,7 @@ public sealed class VmDriverInstallServiceTests
 
         var result = await service.InstallAsync(
             storedPlan.PlanId,
-            new VmDriverInstallOptions(
-                RequireBrokerValidation: false,
-                BrokerOptions: new BrokerPlanValidationOptions(1, "test-capability")));
+            new VmDriverInstallOptions(BrokerOptions: new BrokerPlanValidationOptions(1, "test-capability")));
 
         Assert.False(result.CompletedSuccessfully);
         Assert.Contains("not eligible", result.Summary, StringComparison.OrdinalIgnoreCase);
@@ -137,9 +176,7 @@ public sealed class VmDriverInstallServiceTests
 
         var result = await service.InstallAsync(
             storedPlan.PlanId,
-            new VmDriverInstallOptions(
-                RequireBrokerValidation: false,
-                BrokerOptions: new BrokerPlanValidationOptions(1, "test-capability")));
+            new VmDriverInstallOptions(BrokerOptions: new BrokerPlanValidationOptions(1, "test-capability")));
 
         Assert.False(result.CompletedSuccessfully);
         Assert.Equal(UpdateVerificationResult.InstalledRestartRequired, result.PostInstallVerification.Result);
@@ -159,9 +196,7 @@ public sealed class VmDriverInstallServiceTests
 
         var result = await service.InstallAsync(
             storedPlan.PlanId,
-            new VmDriverInstallOptions(
-                RequireBrokerValidation: false,
-                BrokerOptions: new BrokerPlanValidationOptions(1, "test-capability")));
+            new VmDriverInstallOptions(BrokerOptions: new BrokerPlanValidationOptions(1, "test-capability")));
 
         Assert.True(result.CompletedSuccessfully);
         Assert.Equal(UpdateVerificationResult.Verified, result.PostInstallVerification.Result);
@@ -189,9 +224,17 @@ public sealed class VmDriverInstallServiceTests
             new ToggleDeviceInventoryProvider(beforeDevice, afterDevice),
             new FakeUpdateTransactionStore(),
             new RealPostInstallVerificationService(),
-            brokerPlanValidationClient: null,
             brokerDriverInstallClient: brokerInstallClient,
-            windowsUpdateDriverInstallService: new FakeWindowsUpdateDriverInstallService());
+            windowsUpdateDriverInstallService: new FakeWindowsUpdateDriverInstallService(),
+            labElevatedBrokerLauncher: new FakeLabElevatedBrokerLauncher());
+    }
+
+    private sealed class FakeLabElevatedBrokerLauncher : ILabElevatedBrokerLauncher
+    {
+        public Task LaunchAndWaitAsync(
+            BrokerPlanValidationOptions options,
+            CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
     }
 
     private sealed class FakeWindowsUpdateDriverInstallService : IWindowsUpdateDriverInstallService
@@ -201,6 +244,12 @@ public sealed class VmDriverInstallServiceTests
             int revision,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(new WindowsUpdateDownloadResult(true, 2, 0, "Fake download completed."));
+
+        public Task<bool> IsUpdatePreparedAsync(
+            string updateId,
+            int revision,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
 
         public Task<WindowsUpdateInstallResult> InstallPreparedAsync(
             string updateId,

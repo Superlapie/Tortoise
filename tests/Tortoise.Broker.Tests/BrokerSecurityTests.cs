@@ -113,6 +113,20 @@ public sealed class BrokerRequestHandlerTests
     private const string TestCapability = "handler-test-capability";
 
     [Fact]
+    public async Task HandleAsync_rejects_non_install_operations_in_install_only_mode()
+    {
+        var handler = CreateHandler(allowDriverInstall: true);
+        var request = BrokerRequestFactory.Create(BrokerOperation.Ping, TestSessionId, TestCapability);
+        var response = await handler.HandleAsync(
+            request,
+            CreateOptions(true, installOnlyMode: true),
+            CancellationToken.None);
+
+        Assert.False(response.Succeeded);
+        Assert.Equal(BrokerErrorCode.OperationNotAllowed, response.ErrorCode);
+    }
+
+    [Fact]
     public async Task HandleAsync_returns_status_with_install_disabled_by_default()
     {
         var handler = CreateHandler(allowDriverInstall: false);
@@ -210,12 +224,13 @@ public sealed class BrokerRequestHandlerTests
         Assert.Equal(BrokerErrorCode.PlanValidationFailed, response.ErrorCode);
     }
 
-    private static BrokerHostOptions CreateOptions(bool allowDriverInstall) =>
+    private static BrokerHostOptions CreateOptions(bool allowDriverInstall, bool installOnlyMode = false) =>
         new()
         {
             SessionId = TestSessionId,
             CapabilityToken = TestCapability,
             AllowDriverInstall = allowDriverInstall,
+            InstallOnlyMode = installOnlyMode,
         };
 
     private static BrokerRequestHandler CreateHandler(
@@ -262,6 +277,12 @@ public sealed class BrokerRequestHandlerTests
                 UpdateHResult: 0,
                 RebootRequired: false,
                 "Fake Windows Update install completed."));
+
+        public Task<bool> IsUpdatePreparedAsync(
+            string updateId,
+            int revision,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
 
         public Task<WindowsUpdateInstallResult> InstallAsync(
             string updateId,

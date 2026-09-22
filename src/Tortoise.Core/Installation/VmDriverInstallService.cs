@@ -14,9 +14,9 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
     private readonly IUpdatePreflightService _preflightService;
     private readonly IDeviceInventoryProvider _deviceInventoryProvider;
     private readonly IUpdateTransactionStore _transactionStore;
-    private readonly IBrokerPlanValidationClient? _brokerPlanValidationClient;
     private readonly IBrokerDriverInstallClient? _brokerDriverInstallClient;
     private readonly IWindowsUpdateDriverInstallService? _windowsUpdateDriverInstallService;
+    private readonly ILabElevatedBrokerLauncher? _labElevatedBrokerLauncher;
     private readonly IRealPostInstallVerificationService _postInstallVerificationService;
 
     public VmDriverInstallService(
@@ -26,9 +26,9 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
         IDeviceInventoryProvider deviceInventoryProvider,
         IUpdateTransactionStore transactionStore,
         IRealPostInstallVerificationService postInstallVerificationService,
-        IBrokerPlanValidationClient? brokerPlanValidationClient = null,
         IBrokerDriverInstallClient? brokerDriverInstallClient = null,
-        IWindowsUpdateDriverInstallService? windowsUpdateDriverInstallService = null)
+        IWindowsUpdateDriverInstallService? windowsUpdateDriverInstallService = null,
+        ILabElevatedBrokerLauncher? labElevatedBrokerLauncher = null)
     {
         _environmentDetector = environmentDetector;
         _planService = planService;
@@ -36,9 +36,9 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
         _deviceInventoryProvider = deviceInventoryProvider;
         _transactionStore = transactionStore;
         _postInstallVerificationService = postInstallVerificationService;
-        _brokerPlanValidationClient = brokerPlanValidationClient;
         _brokerDriverInstallClient = brokerDriverInstallClient;
         _windowsUpdateDriverInstallService = windowsUpdateDriverInstallService;
+        _labElevatedBrokerLauncher = labElevatedBrokerLauncher;
     }
 
     public async Task<VmDriverInstallResult> InstallAsync(
@@ -89,7 +89,6 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
                 null,
                 null,
                 null,
-                null,
                 $"Plan '{storedPlan.PlanId}' is not eligible for disposable VM install. Only low-risk Windows-recommended updates are allowed.",
                 cancellationToken);
         }
@@ -111,7 +110,6 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
                 journal,
                 UpdateTransactionState.PreflightFailed,
                 preflight,
-                null,
                 null,
                 null,
                 "Preflight blocked the disposable VM install.",
@@ -146,7 +144,6 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
                 preflight,
                 null,
                 null,
-                null,
                 $"Windows Update download failed: {download.Message}",
                 cancellationToken);
         }
@@ -159,6 +156,26 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
             journal,
             "Download verification started.",
             ref timestamp);
+
+        var isPrepared = await _windowsUpdateDriverInstallService.IsUpdatePreparedAsync(
+            candidate.UpdateIdentity,
+            candidate.UpdateRevision,
+            cancellationToken);
+
+        if (!isPrepared)
+        {
+            return await FailAsync(
+                storedPlan.PlanId,
+                transaction,
+                journal,
+                UpdateTransactionState.Failed,
+                preflight,
+                null,
+                null,
+                "Windows Update reported that the requested update is not fully downloaded and cached.",
+                cancellationToken);
+        }
+
         transaction = Advance(
             transaction,
             UpdateTransactionState.Verified,
@@ -177,46 +194,23 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
             transaction,
             UpdateTransactionState.AwaitingElevation,
             journal,
-            "Elevated lab broker requested for install-only boundary.",
+            "Elevated lab broker will be launched for the install-only boundary.",
             ref timestamp);
         await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
-
-        BrokerPlanValidationResult? brokerValidation = null;
-        if (options.RequireBrokerValidation)
-        {
-            if (_brokerPlanValidationClient is null || options.BrokerOptions is null)
-            {
-                throw new InvalidOperationException(
-                    "Broker plan validation was requested but broker options or client are unavailable.");
-            }
-
-            brokerValidation = await _brokerPlanValidationClient.ValidatePlanAsync(
-                storedPlan.PlanId,
-                storedPlan.Plan.PlanHash,
-                options.BrokerOptions,
-                cancellationToken);
-
-            if (!brokerValidation.Succeeded)
-            {
-                return await FailAsync(
-                    storedPlan.PlanId,
-                    transaction,
-                    journal,
-                    UpdateTransactionState.Failed,
-                    preflight,
-                    brokerValidation,
-                    null,
-                    null,
-                    $"Broker plan validation failed: {brokerValidation.Message}",
-                    cancellationToken);
-            }
-        }
 
         if (_brokerDriverInstallClient is null || options.BrokerOptions is null)
         {
             throw new InvalidOperationException(
                 "Broker driver install client or broker options are unavailable.");
         }
+
+        if (_labElevatedBrokerLauncher is null)
+        {
+            throw new InvalidOperationException(
+                "Elevated lab broker launcher is unavailable for VM install.");
+        }
+
+        await _labElevatedBrokerLauncher.LaunchAndWaitAsync(options.BrokerOptions, cancellationToken);
 
         transaction = Advance(
             transaction,
@@ -242,7 +236,6 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
                 journal,
                 UpdateTransactionState.Failed,
                 preflight,
-                brokerValidation,
                 brokerInstall,
                 null,
                 $"Broker driver install failed: {brokerInstall.Message}",
@@ -276,7 +269,7 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
             return new VmDriverInstallResult(
                 storedPlan.PlanId,
                 preflight,
-                brokerValidation,
+                null,
                 brokerInstall,
                 new UpdateVerification(
                     transactionId,
@@ -316,7 +309,6 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
                 journal,
                 UpdateTransactionState.Failed,
                 preflight,
-                brokerValidation,
                 brokerInstall,
                 postInstallVerification,
                 postInstallVerification.Message,
@@ -334,7 +326,7 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
         return new VmDriverInstallResult(
             storedPlan.PlanId,
             preflight,
-            brokerValidation,
+            null,
             brokerInstall,
             postInstallVerification,
             CompletedSuccessfully: true,
@@ -347,7 +339,6 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
         List<OperationJournalEntry> journal,
         UpdateTransactionState terminalState,
         UpdatePreflight? preflight,
-        BrokerPlanValidationResult? brokerValidation,
         BrokerDriverInstallResult? brokerInstall,
         UpdateVerification? postInstallVerification,
         string summary,
@@ -360,7 +351,7 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
         return new VmDriverInstallResult(
             planId,
             preflight ?? new UpdatePreflight(planId, [], true),
-            brokerValidation,
+            null,
             brokerInstall,
             postInstallVerification
                 ?? new UpdateVerification(

@@ -1,4 +1,5 @@
 using Tortoise.Broker.Ipc;
+using Tortoise.Broker.Validation;
 using Tortoise.Contracts.Mutation;
 using Tortoise.Security.Broker;
 
@@ -10,7 +11,7 @@ public static class Program
     {
         if (args.Length == 0 || !string.Equals(args[0], "serve", StringComparison.OrdinalIgnoreCase))
         {
-            Console.Error.WriteLine("Usage: tortoise-lab-broker serve --session-id=N [--pipe=name] [--capability=token]");
+            Console.Error.WriteLine("Usage: tortoise-lab-broker serve --session-id=N [--pipe=name] [--capability=token] [--db=path]");
             return 1;
         }
 
@@ -26,12 +27,21 @@ public static class Program
                 ? WindowsSessionIdentity.GetCurrentSessionId()
                 : Environment.ProcessId;
         var capability = ParseCapability(args) ?? Guid.NewGuid().ToString("N");
+        var databasePath = ParseDatabasePath(args);
+        if (!BrokerDatabasePathValidator.TryValidate(databasePath, out var normalizedDatabasePath, out var validationError))
+        {
+            Console.Error.WriteLine(validationError ?? "Broker database path is invalid.");
+            return 4;
+        }
+
         var options = new BrokerHostOptions
         {
             SessionId = sessionId,
             CapabilityToken = capability,
             PipeName = ParsePipeName(args),
             AllowDriverInstall = BrokerHostOptions.ShouldAllowLabBrokerDriverInstall(),
+            InstallOnlyMode = true,
+            DatabasePath = normalizedDatabasePath,
         };
 
         if (!options.AllowDriverInstall)
@@ -80,6 +90,19 @@ public static class Program
             if (arg.StartsWith("--capability=", StringComparison.OrdinalIgnoreCase))
             {
                 return arg["--capability=".Length..];
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ParseDatabasePath(string[] args)
+    {
+        foreach (var arg in args)
+        {
+            if (arg.StartsWith("--db=", StringComparison.OrdinalIgnoreCase))
+            {
+                return arg["--db=".Length..];
             }
         }
 

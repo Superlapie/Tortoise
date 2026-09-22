@@ -45,7 +45,19 @@ internal static class WuaInstallExecutor
             }
 
             scope.Track(downloadResult);
-            return EvaluateDownloadResult(downloadResult);
+            return EvaluateDownloadResult(downloadResult, scope);
+        });
+    }
+
+    internal static bool IsUpdatePrepared(string updateId, int revision, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return WuaSessionRunner.Execute(session =>
+        {
+            using var scope = new WuaComScope();
+            var searchBundle = SearchUpdate(session, updateId, revision, scope);
+            return searchBundle is not null && searchBundle.Update.IsDownloaded;
         });
     }
 
@@ -68,6 +80,16 @@ internal static class WuaInstallExecutor
                     0,
                     RebootRequired: false,
                     "Windows Update did not return the requested driver package.");
+            }
+
+            if (!searchBundle.Update.IsDownloaded)
+            {
+                return new WindowsUpdateInstallResult(
+                    false,
+                    (int)OperationResultCode.Failed,
+                    0,
+                    RebootRequired: false,
+                    "Windows Update reported that the requested update is not fully downloaded and cached.");
             }
 
             var installer = session.CreateUpdateInstaller();
@@ -101,7 +123,7 @@ internal static class WuaInstallExecutor
                 rebootRequired |= update2.RebootRequired;
             }
 
-            return EvaluateInstallationResult(installationResult, rebootRequired);
+            return EvaluateInstallationResult(installationResult, rebootRequired, scope);
         });
     }
 
@@ -164,11 +186,14 @@ internal static class WuaInstallExecutor
         return new SearchBundle(update, collection);
     }
 
-    private static WindowsUpdateDownloadResult EvaluateDownloadResult(IDownloadResult downloadResult)
+    private static WindowsUpdateDownloadResult EvaluateDownloadResult(
+        IDownloadResult downloadResult,
+        WuaComScope scope)
     {
         var aggregateCode = (int)downloadResult.ResultCode;
         var aggregateHResult = downloadResult.HResult;
         var updateResult = downloadResult.GetUpdateResult(0);
+        scope.Track(updateResult);
         var updateCode = (int)updateResult.ResultCode;
         var updateHResult = updateResult.HResult;
 
@@ -185,11 +210,13 @@ internal static class WuaInstallExecutor
 
     private static WindowsUpdateInstallResult EvaluateInstallationResult(
         IInstallationResult installationResult,
-        bool rebootRequired)
+        bool rebootRequired,
+        WuaComScope scope)
     {
         var aggregateCode = (int)installationResult.ResultCode;
         var aggregateHResult = installationResult.HResult;
         var updateResult = installationResult.GetUpdateResult(0);
+        scope.Track(updateResult);
         var updateCode = (int)updateResult.ResultCode;
         var updateHResult = updateResult.HResult;
 

@@ -8,7 +8,8 @@ public sealed record BrokerPlanValidationOptions(
     int SessionId,
     string CapabilityToken,
     string? PipeName = null,
-    int ConnectTimeoutMs = 5000);
+    int ConnectTimeoutMs = 5000,
+    string? DatabasePath = null);
 
 public sealed record BrokerPlanValidationResult(
     bool Succeeded,

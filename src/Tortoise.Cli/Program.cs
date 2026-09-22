@@ -65,7 +65,7 @@ static int PrintUsage()
     Console.WriteLine("  tortoise simulate <plan-id> [--db=path]");
     Console.WriteLine("  tortoise workflow run <plan-id> [--skip-broker] [--session-id=N] [--pipe=name] [--db=path]");
     Console.WriteLine("  tortoise vm status");
-    Console.WriteLine("  tortoise vm install <plan-id> [--skip-broker-validate] [--session-id=N] [--pipe=name] [--db=path]");
+    Console.WriteLine("  tortoise vm install <plan-id> [--session-id=N] [--pipe=name] [--db=path]");
     Console.WriteLine("  tortoise fault list");
     Console.WriteLine("  tortoise fault run <scenario> <plan-id> [--db=path]");
     Console.WriteLine("  tortoise fault reconcile <transaction-id> [--db=path]");
@@ -514,16 +514,15 @@ static async Task<int> RunVmInstallAsync(string[] args)
 
     if (args.Length < 3 || !Guid.TryParse(args[2], out var planId))
     {
-        Console.Error.WriteLine("Usage: tortoise vm install <plan-id> [--skip-broker-validate] [--session-id=N] [--pipe=name] [--db=path]");
+        Console.Error.WriteLine("Usage: tortoise vm install <plan-id> [--session-id=N] [--pipe=name] [--db=path]");
         return 1;
     }
 
-    var skipBrokerValidate = args.Contains("--skip-broker-validate", StringComparer.OrdinalIgnoreCase);
     var services = new ServiceCollection();
     services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
     services.AddTortoiseVmDriverInstall();
-    services.AddTortoiseBrokerPlanValidation();
     services.AddTortoiseBrokerDriverInstall();
+    services.AddTortoiseLabBrokerElevation();
 
     var provider = services.BuildServiceProvider();
     var scanStore = provider.GetRequiredService<IScanSessionStore>();
@@ -531,20 +530,18 @@ static async Task<int> RunVmInstallAsync(string[] args)
     await scanStore.InitializeAsync();
 
     var brokerHostOptions = CreateBrokerHostOptions(args);
-    await StartBrokerServerIfNeededAsync(brokerHostOptions with { AllowDriverInstall = true });
     var brokerOptions = new BrokerPlanValidationOptions(
         brokerHostOptions.SessionId,
         brokerHostOptions.CapabilityToken,
         brokerHostOptions.PipeName,
-        brokerHostOptions.ConnectTimeoutMs);
+        brokerHostOptions.ConnectTimeoutMs,
+        ParseStringArg(args, "--db="));
 
     try
     {
         var result = await installService.InstallAsync(
             planId,
-            new VmDriverInstallOptions(
-                RequireBrokerValidation: !skipBrokerValidate,
-                BrokerOptions: brokerOptions));
+            new VmDriverInstallOptions(BrokerOptions: brokerOptions));
 
         Console.WriteLine(result.Summary);
         Console.WriteLine($"Plan: {result.PlanId}");
@@ -1241,6 +1238,19 @@ static long? ParseSessionId(string[] args)
             && long.TryParse(arg["--session-id=".Length..], out var sessionId))
         {
             return sessionId;
+        }
+    }
+
+    return null;
+}
+
+static string? ParseStringArg(string[] args, string prefix)
+{
+    foreach (var arg in args)
+    {
+        if (arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return arg[prefix.Length..];
         }
     }
 
