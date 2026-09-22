@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RootNamespace>Tortoise.App</RootNamespace>
+    <AssemblyName>Tortoise</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tortoise.Contracts\Tortoise.Contracts.csproj" />
+    <ProjectReference Include="..\Tortoise.Core\Tortoise.Core.csproj" />
+    <ProjectReference Include="..\Tortoise.Security\Tortoise.Security.csproj" />
+    <ProjectReference Include="..\Tortoise.Windows\Tortoise.Windows.csproj" />
+    <ProjectReference Include="..\Tortoise.WindowsUpdate\Tortoise.WindowsUpdate.csproj" />
+  </ItemGroup>
+
+</Project>

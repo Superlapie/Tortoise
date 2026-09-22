@@ -1,0 +1,36 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore Tortoise.slnx
+      - name: Build libraries
+        run: dotnet build Tortoise.slnx -c Release --no-restore /p:BuildProjectReferences=true
+      - name: Test
+        run: dotnet test Tortoise.slnx -c Release --no-build --filter "FullyQualifiedName!~Integration"
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore Tortoise.slnx
+      - name: Build
+        run: dotnet build Tortoise.slnx -c Release --no-restore
+      - name: Test
+        run: dotnet test Tortoise.slnx -c Release --no-build --filter "FullyQualifiedName!~Integration"

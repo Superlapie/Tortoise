@@ -1,0 +1,28 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Publish portable
+        run: dotnet publish src/Tortoise.App/Tortoise.App.csproj -c Release -r win-x64 --self-contained false -o artifacts/portable
+      - name: Create release archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path artifacts/portable/* -DestinationPath artifacts/Tortoise-${{ github.ref_name }}-win-x64.zip
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/Tortoise-${{ github.ref_name }}-win-x64.zip
+          generate_release_notes: true

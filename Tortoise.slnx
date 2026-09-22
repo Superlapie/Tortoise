@@ -1,0 +1,23 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Tortoise.App/Tortoise.App.csproj" />
+    <Project Path="src/Tortoise.Broker/Tortoise.Broker.csproj" />
+    <Project Path="src/Tortoise.Cli/Tortoise.Cli.csproj" />
+    <Project Path="src/Tortoise.Contracts/Tortoise.Contracts.csproj" />
+    <Project Path="src/Tortoise.Core/Tortoise.Core.csproj" />
+    <Project Path="src/Tortoise.Persistence/Tortoise.Persistence.csproj" />
+    <Project Path="src/Tortoise.Security/Tortoise.Security.csproj" />
+    <Project Path="src/Tortoise.Windows/Tortoise.Windows.csproj" />
+    <Project Path="src/Tortoise.WindowsUpdate/Tortoise.WindowsUpdate.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Tortoise.ArchitectureTests/Tortoise.ArchitectureTests.csproj" />
+    <Project Path="tests/Tortoise.Broker.Tests/Tortoise.Broker.Tests.csproj" />
+    <Project Path="tests/Tortoise.Core.Tests/Tortoise.Core.Tests.csproj" />
+    <Project Path="tests/Tortoise.IntegrationTests/Tortoise.IntegrationTests.csproj" />
+    <Project Path="tests/Tortoise.Persistence.Tests/Tortoise.Persistence.Tests.csproj" />
+    <Project Path="tests/Tortoise.Security.Tests/Tortoise.Security.Tests.csproj" />
+    <Project Path="tests/Tortoise.Windows.Tests/Tortoise.Windows.Tests.csproj" />
+    <Project Path="tests/Tortoise.WindowsUpdate.Tests/Tortoise.WindowsUpdate.Tests.csproj" />
+  </Folder>
+</Solution>

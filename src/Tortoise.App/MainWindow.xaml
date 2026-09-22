@@ -1,0 +1,26 @@
+<Window x:Class="Tortoise.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Tortoise"
+        Height="640"
+        Width="960"
+        MinHeight="480"
+        MinWidth="720">
+    <Grid Margin="24">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock Text="Tortoise"
+                       FontSize="32"
+                       FontWeight="SemiBold"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="Transparent Windows driver management."
+                       Margin="0,8,0,0"
+                       FontSize="14"
+                       Opacity="0.8"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="Read-only alpha — system mutation is disabled."
+                       Margin="0,16,0,0"
+                       FontSize="13"
+                       HorizontalAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</Window>

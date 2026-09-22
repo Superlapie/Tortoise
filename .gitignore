@@ -1,0 +1,49 @@
+## Build results
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+publish/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## IDE
+.vs/
+.vscode/
+*.DotSettings.user
+.idea/
+
+## NuGet
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+project.fragment.lock.json
+
+## Test / coverage
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+## OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+## Secrets and local data
+.env
+.env.*
+*.pfx
+*.p12
+*.key
+*.pem
+secrets/
+appsettings.Development.local.json
+
+## Tortoise local runtime (never commit)
+*.local.db
+*.local.sqlite
