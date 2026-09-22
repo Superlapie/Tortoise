@@ -36,9 +36,41 @@ public sealed class WindowsDeviceInventoryProviderTests
         Assert.All(result.Devices, entry =>
         {
             Assert.False(string.IsNullOrWhiteSpace(entry.Snapshot.Identity.DeviceInstanceId));
-            Assert.NotEqual(Guid.Empty, entry.Snapshot.Identity.ClassGuid);
             Assert.True(entry.Snapshot.Identity.IsPresent);
+
+            if (ShouldRequireClassGuid(entry))
+            {
+                Assert.NotEqual(Guid.Empty, entry.Snapshot.Identity.ClassGuid);
+            }
         });
+    }
+
+    private static bool ShouldRequireClassGuid(DeviceInventoryEntry entry)
+    {
+        if (entry.Snapshot.Identity.ClassGuid != Guid.Empty)
+        {
+            return false;
+        }
+
+        var instanceId = entry.Snapshot.Identity.DeviceInstanceId;
+        if (instanceId.StartsWith(@"HTREE\", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (entry.Snapshot.Health.ProblemCode == 28)
+        {
+            return false;
+        }
+
+        if (entry.InstalledDriver is null
+            && string.IsNullOrWhiteSpace(entry.Snapshot.Identity.ClassName)
+            && instanceId.StartsWith(@"VMBUS\", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     [Fact]

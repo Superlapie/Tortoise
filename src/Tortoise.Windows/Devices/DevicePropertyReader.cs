@@ -72,6 +72,7 @@ internal static class DevicePropertyReader
         var classGuid = ReadGuidProperty(infoSet.Handle, ref deviceInfoData, SetupDiRegistryProperty.ClassGuid)
                         ?? ReadGuidDeviceProperty(infoSet.Handle, ref deviceInfoData, DevPropKeys.DeviceClassGuid)
                         ?? ReadClassGuidFromConfigManager(devInst)
+                        ?? ReadKnownRootClassGuid(deviceInstanceId)
                         ?? NullIfEmpty(deviceInfoData.ClassGuid);
 
         var hardwareIds = ReadMultiStringRegistryProperty(
@@ -247,12 +248,46 @@ internal static class DevicePropertyReader
 
     private static Guid? ReadClassGuidFromConfigManager(uint devInst)
     {
+        var fromProperty = ReadGuidDevNodeProperty(devInst, DevPropKeys.DeviceClassGuid);
+        if (fromProperty is not null)
+        {
+            return fromProperty;
+        }
+
+        var fromRegistry = ReadGuidDevNodeRegistryProperty(devInst, ConfigRegistryProperty.ClassGuid);
+        if (fromRegistry is not null)
+        {
+            return fromRegistry;
+        }
+
+        if (ConfigManagerNative.GetParent(out var parentDevInst, devInst, 0) != ConfigRet.Success
+            || parentDevInst == devInst)
+        {
+            return null;
+        }
+
+        return ReadGuidDevNodeProperty(parentDevInst, DevPropKeys.DeviceClassGuid)
+               ?? ReadGuidDevNodeRegistryProperty(parentDevInst, ConfigRegistryProperty.ClassGuid);
+    }
+
+    private static Guid? ReadKnownRootClassGuid(string deviceInstanceId)
+    {
+        if (deviceInstanceId.Equals(@"HTREE\ROOT\0", StringComparison.OrdinalIgnoreCase))
+        {
+            return new Guid("4D36E97D-E325-11CE-BFC1-08002BE10318");
+        }
+
+        return null;
+    }
+
+    private static Guid? ReadGuidDevNodeProperty(uint devInst, DevPropKey propertyKey)
+    {
         var bufferLength = 0u;
-        var sizeResult = ConfigManagerNative.GetDevNodeRegistryProperty(
+        var sizeResult = ConfigManagerNative.GetDevNodeProperty(
             devInst,
-            ConfigRegistryProperty.ClassGuid,
-            out _,
-            [],
+            propertyKey,
+            out var propertyType,
+            IntPtr.Zero,
             ref bufferLength,
             0);
 
@@ -262,17 +297,69 @@ internal static class DevicePropertyReader
         }
 
         var buffer = new byte[bufferLength];
-        var readResult = ConfigManagerNative.GetDevNodeRegistryProperty(
+        unsafe
+        {
+            fixed (byte* bufferPointer = buffer)
+            {
+                var readLength = bufferLength;
+                var readResult = ConfigManagerNative.GetDevNodeProperty(
+                    devInst,
+                    propertyKey,
+                    out propertyType,
+                    (IntPtr)bufferPointer,
+                    ref readLength,
+                    0);
+
+                if (readResult != ConfigRet.Success)
+                {
+                    return null;
+                }
+            }
+        }
+
+        if (propertyType != DevPropType.Guid || buffer.Length < 16)
+        {
+            return null;
+        }
+
+        return new Guid(buffer.AsSpan(0, 16));
+    }
+
+    private static Guid? ReadGuidDevNodeRegistryProperty(uint devInst, ConfigRegistryProperty property)
+    {
+        var bufferLength = 0u;
+        var sizeResult = ConfigManagerNative.GetDevNodeRegistryProperty(
             devInst,
-            ConfigRegistryProperty.ClassGuid,
+            property,
             out _,
-            buffer,
+            IntPtr.Zero,
             ref bufferLength,
             0);
 
-        if (readResult != ConfigRet.Success)
+        if (sizeResult != ConfigRet.BufferSmall || bufferLength == 0)
         {
             return null;
+        }
+
+        var buffer = new byte[bufferLength];
+        unsafe
+        {
+            fixed (byte* bufferPointer = buffer)
+            {
+                var readLength = bufferLength;
+                var readResult = ConfigManagerNative.GetDevNodeRegistryProperty(
+                    devInst,
+                    property,
+                    out _,
+                    (IntPtr)bufferPointer,
+                    ref readLength,
+                    0);
+
+                if (readResult != ConfigRet.Success)
+                {
+                    return null;
+                }
+            }
         }
 
         var text = TrimNullTerminatedUnicode(buffer);

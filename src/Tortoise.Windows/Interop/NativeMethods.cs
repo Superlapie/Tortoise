@@ -152,8 +152,23 @@ internal static partial class ConfigManagerNative
         uint deviceInstanceHandle,
         ConfigRegistryProperty property,
         out uint propertyDataType,
-        byte[] buffer,
+        IntPtr buffer,
         ref uint bufferLength,
+        uint flags);
+
+    [LibraryImport(NativeLibraries.CfgMgr32, EntryPoint = "CM_Get_DevNode_PropertyW")]
+    internal static partial ConfigRet GetDevNodeProperty(
+        uint deviceInstanceHandle,
+        in DevPropKey propertyKey,
+        out DevPropType propertyType,
+        IntPtr buffer,
+        ref uint bufferLength,
+        uint flags);
+
+    [LibraryImport(NativeLibraries.CfgMgr32, EntryPoint = "CM_Get_Parent")]
+    internal static partial ConfigRet GetParent(
+        out uint parentDeviceInstanceHandle,
+        uint deviceInstanceHandle,
         uint flags);
 }
 
