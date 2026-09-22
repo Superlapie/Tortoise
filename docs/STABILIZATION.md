@@ -15,16 +15,20 @@ This document tracks audit remediation after Batch 14. The accurate status is: *
 ## Phase 1 — Windows interop and WUA
 
 - Fixed ConfigMgr sizing and SetupAPI signatures
+- Corrected `CM_Get_Device_ID_List_SizeW` parameter order (`out length` first)
 - Corrected DEVPKEY driver property set
+- WUA activation via documented ProgID `Microsoft.Update.Session` (not CoClass/IID confusion)
+- WUA collections via ProgID `Microsoft.Update.UpdateColl`
 - Rebuilt WUA COM layer from Microsoft `wuapi.idl` GUIDs and dispids
-- `IUpdateInstaller.Install()` now returns `IInstallationResult` (not `int`)
+- Fixed remaining category interface IDs/dispids (`ICategory`, `ICategoryCollection`)
+- `IUpdateInstaller.Install()` returns `IInstallationResult`; explicit `IUpdateDownloader.Download()` before install
 - Driver-only properties read from `IWindowsDriverUpdate`, not base `IUpdate`
 - `AutoSelection` read from `IUpdate5` with corrected mapping (3=Recommended, 2=Optional)
 - Authoritative device matching uses WUA `DriverHardwareID` vs device hardware/compatible IDs
 - Unmapped driver scan results produce `Unknown` device state (fail-closed), not `Current`
 - Signature/source provenance no longer fabricated as trusted Windows Update
 
-**Still open:** Windows CI verification of COM interop on real `windows-latest` runners.
+**Still open:** full WUA IDL audit of every remaining IID/DISPID; Windows CI target 110/110 on `windows-latest`.
 
 ## Phase 2 — Broker trust
 
@@ -33,6 +37,7 @@ This document tracks audit remediation after Batch 14. The accurate status is: *
 - `BrokerPlanAuthority` reloads persisted plans and validates canonical hash + install payload
 - Elevated broker launch via UAC (`BrokerElevationLauncher`) wired into `tortoise-lab vm install`
 - Broker TOCTOU guard re-checks device presence, installed driver version, live WUA candidate, hardware ID, and classification before install (Windows broker host)
+- Injectable `IBrokerLiveInstallVerifier` for deterministic unit tests on all platforms
 
 **Still open:** `%ProgramData%` plan store ACL / cryptographic sealing; pending reboot gate at broker boundary.
 
@@ -49,7 +54,10 @@ This document tracks audit remediation after Batch 14. The accurate status is: *
 - Release validation runs on **both** `ubuntu-latest` and `windows-latest`
 - Prerelease tags use numeric `AssemblyVersion`/`FileVersion`; full tag in `InformationalVersion`
 - Package inventory exported as `dependencies.json` (not SPDX/CycloneDX SBOM)
-- Real VM install path now writes durable transaction journal entries via `IUpdateTransactionStore`
+- Real VM install path writes durable transaction journal entries via `IUpdateTransactionStore`
+- Journal persisted before `PreflightPassed`, `AwaitingElevation`, and `Installing` boundaries
+- Shared `UpdateTransactionJournal` enforces transition validation for simulated and real paths
+- Reboot-required installs end in `AwaitingReboot` (not falsely `Completed`)
 
 **Still open:** signed release binaries, branch protection, clean-VM release smoke test, real package export.
 
