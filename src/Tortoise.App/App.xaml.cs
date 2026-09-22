@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Tortoise.App.Services;
 using Tortoise.App.ViewModels;
+using Tortoise.Persistence.Extensions;
 using Tortoise.Windows.Extensions;
 
 namespace Tortoise.App;
@@ -19,6 +20,7 @@ public partial class App : Application
             .ConfigureServices(static services =>
             {
                 services.AddTortoiseRecommendations();
+                services.AddTortoisePersistence();
                 services.AddSingleton<AppSettings>();
                 services.AddSingleton<AppSessionState>();
                 services.AddSingleton<ScanCoordinator>();

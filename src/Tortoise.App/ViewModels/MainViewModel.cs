@@ -121,6 +121,8 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task RunInitialScanAsync()
     {
         _safety.Load();
+        await _sessionState.InitializeAsync();
+        _history.Load(_sessionState.History);
         await RunScanAsync();
     }
 

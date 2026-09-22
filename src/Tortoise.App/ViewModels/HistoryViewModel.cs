@@ -35,7 +35,7 @@ public sealed class HistoryItemViewModel
         {
             TimestampUtc = snapshot.ScannedAtUtc,
             Summary =
-                $"Scan: {recommendations.Count.ToString()} devices, {problems.ToString()} problems, {recommended.ToString()} recommended updates",
+                $"Session {snapshot.SessionId.ToString()}: {recommendations.Count.ToString()} devices, {problems.ToString()} problems, {recommended.ToString()} recommended updates",
         };
     }
 }

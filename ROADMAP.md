@@ -64,12 +64,12 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 - Combine installed driver, applicable update, risk class
 - Never mislabel "latest"
 
-### Batch 6 — Production-quality UI ✅ (current)
+### Batch 6 — Production-quality UI ✅
 
 - Overview, Devices, Updates, Safety, History, Settings, About
 - Accessibility, dark/light themes
 
-### Batch 7 — Persistence and scan history
+### Batch 7 — Persistence and scan history ✅ (current)
 
 - SQLite migrations, scan sessions, diagnostics export
 

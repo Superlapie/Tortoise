@@ -1,9 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using Tortoise.Contracts.Mutation;
 using Tortoise.Core.Devices;
+using Tortoise.Core.Diagnostics;
 using Tortoise.Core.Drivers;
 using Tortoise.Core.Recommendations;
+using Tortoise.Core.ScanSessions;
 using Tortoise.Core.Updates;
+using Tortoise.Persistence.Extensions;
 using Tortoise.Windows.Extensions;
 using Tortoise.WindowsUpdate.Extensions;
 
@@ -20,6 +23,7 @@ return command switch
     "packages" or "drivers" => await RunPackageScanAsync(args),
     "updates" => await RunUpdatesScanAsync(args),
     "recommend" or "recommendations" => await RunRecommendationsAsync(args),
+    "export-report" => await RunExportReportAsync(args),
     "status" => RunStatus(),
     _ => PrintUnknown(command),
 };
@@ -34,6 +38,7 @@ static int PrintUsage()
     Console.WriteLine("  tortoise packages");
     Console.WriteLine("  tortoise updates [--optional]");
     Console.WriteLine("  tortoise recommend [--optional]");
+    Console.WriteLine("  tortoise export-report <path> [--session-id=N] [--db=path]");
     Console.WriteLine("  tortoise status");
     return 0;
 }
@@ -201,8 +206,13 @@ static async Task<int> RunRecommendationsAsync(string[] args)
     var includeOptional = args.Contains("--optional", StringComparer.OrdinalIgnoreCase);
     var services = new ServiceCollection();
     services.AddTortoiseRecommendations();
-    var service = services.BuildServiceProvider().GetRequiredService<IRecommendationScanService>();
+    services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+    var provider = services.BuildServiceProvider();
+    var service = provider.GetRequiredService<IRecommendationScanService>();
+    var store = provider.GetRequiredService<IScanSessionStore>();
+    await store.InitializeAsync();
     var result = await service.ScanAsync(new RecommendationOptions(IncludeOptionalUpdates: includeOptional));
+    await store.SaveAsync(result);
 
     Console.WriteLine(result.UpdatePolicy.DisplayMessage);
     Console.WriteLine();
@@ -247,4 +257,62 @@ static async Task<int> RunRecommendationsAsync(string[] args)
     }
 
     return 0;
+}
+
+static async Task<int> RunExportReportAsync(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: tortoise export-report <path> [--session-id=N] [--db=path]");
+        return 1;
+    }
+
+    var outputPath = args[1];
+    var sessionId = ParseSessionId(args);
+    var services = new ServiceCollection();
+    services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+    var provider = services.BuildServiceProvider();
+    var store = provider.GetRequiredService<IScanSessionStore>();
+    var exporter = provider.GetRequiredService<IDiagnosticsReportExporter>();
+
+    await store.InitializeAsync();
+
+    if (sessionId is null)
+    {
+        await exporter.ExportLatestSessionAsync(outputPath);
+        var latest = await store.GetLatestAsync();
+        Console.WriteLine($"Exported latest scan session {latest!.Id.ToString()} to {outputPath}");
+    }
+    else
+    {
+        await exporter.ExportSessionAsync(sessionId.Value, outputPath);
+        Console.WriteLine($"Exported scan session {sessionId.Value.ToString()} to {outputPath}");
+    }
+
+    return 0;
+}
+
+static long? ParseSessionId(string[] args)
+{
+    foreach (var arg in args)
+    {
+        if (arg.StartsWith("--session-id=", StringComparison.OrdinalIgnoreCase)
+            && long.TryParse(arg["--session-id=".Length..], out var sessionId))
+        {
+            return sessionId;
+        }
+    }
+
+    return null;
+}
+
+static void ConfigureDatabasePath(Tortoise.Persistence.Options.TortoisePersistenceOptions options, string[] args)
+{
+    foreach (var arg in args)
+    {
+        if (arg.StartsWith("--db=", StringComparison.OrdinalIgnoreCase))
+        {
+            options.DatabasePath = arg["--db=".Length..];
+        }
+    }
 }
