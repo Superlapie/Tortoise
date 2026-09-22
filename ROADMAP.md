@@ -73,12 +73,12 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 
 - SQLite migrations, scan sessions, diagnostics export
 
-### Batch 8 — Update planning ✅ (current)
+### Batch 8 — Update planning ✅
 
 - Frozen plans, staleness, preflight skeleton
 - Fake update transactions (no mutation)
 
-### Batch 9 — Recovery preparation
+### Batch 9 — Recovery preparation ✅ (current)
 
 - Before snapshots, export abstraction, recovery manifest
 

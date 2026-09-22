@@ -4,6 +4,7 @@ using Tortoise.Core.Devices;
 using Tortoise.Core.Diagnostics;
 using Tortoise.Core.Drivers;
 using Tortoise.Core.Planning;
+using Tortoise.Core.Recovery;
 using Tortoise.Core.Recommendations;
 using Tortoise.Core.ScanSessions;
 using Tortoise.Core.Updates;
@@ -28,6 +29,7 @@ return command switch
     "plan" or "plans" => await RunPlansAsync(args),
     "preflight" => await RunPreflightAsync(args),
     "simulate" => await RunSimulateAsync(args),
+    "recover" => await RunRecoverAsync(args),
     "status" => RunStatus(),
     _ => PrintUnknown(command),
 };
@@ -47,6 +49,9 @@ static int PrintUsage()
     Console.WriteLine("  tortoise plans [--session-id=N] [--db=path]");
     Console.WriteLine("  tortoise preflight <plan-id> [--db=path]");
     Console.WriteLine("  tortoise simulate <plan-id> [--db=path]");
+    Console.WriteLine("  tortoise recover prepare <plan-id> [--output-dir=path] [--db=path]");
+    Console.WriteLine("  tortoise recover list [--plan-id=guid] [--db=path]");
+    Console.WriteLine("  tortoise recover export <preparation-id> <path> [--db=path]");
     Console.WriteLine("  tortoise status");
     return 0;
 }
@@ -448,6 +453,140 @@ static string? ParseDeviceInstanceId(string[] args)
     }
 
     return null;
+}
+
+static string? ParseOutputDirectory(string[] args)
+{
+    foreach (var arg in args)
+    {
+        if (arg.StartsWith("--output-dir=", StringComparison.OrdinalIgnoreCase))
+        {
+            return arg["--output-dir=".Length..];
+        }
+    }
+
+    return null;
+}
+
+static Guid? ParsePlanGuid(string[] args)
+{
+    foreach (var arg in args)
+    {
+        if (arg.StartsWith("--plan-id=", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParse(arg["--plan-id=".Length..], out var planId))
+        {
+            return planId;
+        }
+    }
+
+    return null;
+}
+
+static async Task<int> RunRecoverAsync(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: tortoise recover <prepare|list|export> ...");
+        return 1;
+    }
+
+    return args[1].ToLowerInvariant() switch
+    {
+        "prepare" => await RunRecoverPrepareAsync(args),
+        "list" => await RunRecoverListAsync(args),
+        "export" => await RunRecoverExportAsync(args),
+        _ => PrintUnknown(args[1]),
+    };
+}
+
+static async Task<int> RunRecoverPrepareAsync(string[] args)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("Recovery preparation requires Windows.");
+        return 1;
+    }
+
+    if (args.Length < 3 || !Guid.TryParse(args[2], out var planId))
+    {
+        Console.Error.WriteLine("Usage: tortoise recover prepare <plan-id> [--output-dir=path] [--db=path]");
+        return 1;
+    }
+
+    var services = new ServiceCollection();
+    services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+    services.AddTortoiseRecoveryPreparation();
+    var provider = services.BuildServiceProvider();
+    var scanStore = provider.GetRequiredService<IScanSessionStore>();
+    var recoveryService = provider.GetRequiredService<IRecoveryPreparationService>();
+
+    await scanStore.InitializeAsync();
+    var record = await recoveryService.PrepareAsync(planId, ParseOutputDirectory(args));
+
+    Console.WriteLine($"Preparation: {record.PreparationId}");
+    Console.WriteLine($"Plan: {record.PlanId}");
+    Console.WriteLine($"Device: {record.Snapshot.BeforeDevice.Identity.FriendlyName}");
+    Console.WriteLine($"Export enabled: {record.ExportAttempt.ExportServiceEnabled}");
+    Console.WriteLine($"Export succeeded: {record.ExportAttempt.Succeeded}");
+    Console.WriteLine($"Export message: {record.ExportAttempt.Message}");
+    Console.WriteLine($"System Restore enabled: {record.SystemRestore.IsEnabled}");
+    return 0;
+}
+
+static async Task<int> RunRecoverListAsync(string[] args)
+{
+    var services = new ServiceCollection();
+    services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+    var provider = services.BuildServiceProvider();
+    var store = provider.GetRequiredService<IRecoveryPreparationStore>();
+    var summaries = await store.ListAsync(ParsePlanGuid(args));
+
+    if (summaries.Count == 0)
+    {
+        Console.WriteLine("No recovery preparations found.");
+        return 0;
+    }
+
+    foreach (var summary in summaries)
+    {
+        Console.WriteLine(summary.PreparationId);
+        Console.WriteLine($"  Plan: {summary.PlanId}");
+        Console.WriteLine($"  Device: {summary.DeviceName}");
+        Console.WriteLine($"  Prepared: {summary.PreparedAtUtc:G}");
+        Console.WriteLine($"  Export succeeded: {summary.ExportSucceeded}");
+        Console.WriteLine($"  System Restore enabled: {summary.SystemRestoreEnabled}");
+        Console.WriteLine();
+    }
+
+    Console.WriteLine($"Preparations: {summaries.Count.ToString()}");
+    return 0;
+}
+
+static async Task<int> RunRecoverExportAsync(string[] args)
+{
+    if (args.Length < 4 || !Guid.TryParse(args[2], out var preparationId))
+    {
+        Console.Error.WriteLine("Usage: tortoise recover export <preparation-id> <path> [--db=path]");
+        return 1;
+    }
+
+    var outputPath = args[3];
+    var services = new ServiceCollection();
+    services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+    var provider = services.BuildServiceProvider();
+    var store = provider.GetRequiredService<IRecoveryPreparationStore>();
+    var exporter = provider.GetRequiredService<IRecoveryManifestExporter>();
+
+    var record = await store.GetAsync(preparationId);
+    if (record is null)
+    {
+        Console.Error.WriteLine($"Recovery preparation '{preparationId}' was not found.");
+        return 1;
+    }
+
+    await exporter.ExportAsync(record, outputPath);
+    Console.WriteLine($"Exported recovery manifest for {preparationId} to {outputPath}");
+    return 0;
 }
 
 static async Task<int> RunExportReportAsync(string[] args)

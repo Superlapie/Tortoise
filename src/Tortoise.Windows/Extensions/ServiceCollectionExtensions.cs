@@ -3,10 +3,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Tortoise.Core.Devices;
 using Tortoise.Core.Drivers;
 using Tortoise.Core.Planning;
+using Tortoise.Core.Recovery;
 using Tortoise.Core.Recommendations;
 using Tortoise.Core.Updates;
 using Tortoise.Windows.Devices;
 using Tortoise.Windows.Drivers;
+using Tortoise.Windows.Recovery;
 using Tortoise.WindowsUpdate.Extensions;
 
 namespace Tortoise.Windows.Extensions;
@@ -47,6 +49,17 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IUpdatePreflightService, UpdatePreflightService>();
         services.AddSingleton<IUpdatePlanService, UpdatePlanService>();
         services.AddSingleton<ISimulatedUpdateTransactionService, SimulatedUpdateTransactionService>();
+        return services;
+    }
+
+    [SupportedOSPlatform("windows")]
+    public static IServiceCollection AddTortoiseRecoveryPreparation(this IServiceCollection services)
+    {
+        services.AddTortoiseUpdatePlanning();
+        services.AddTortoiseWindowsDriverPackageInventory();
+        services.AddSingleton<ISystemEnvironmentProvider, WindowsSystemEnvironmentProvider>();
+        services.AddSingleton<ISystemRestoreInfoProvider, WindowsSystemRestoreInfoProvider>();
+        services.AddSingleton<IRecoveryPreparationService, RecoveryPreparationService>();
         return services;
     }
 }

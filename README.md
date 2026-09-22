@@ -8,7 +8,7 @@ Tortoise is a safety-first Windows driver inventory, health, update, recovery, a
 
 ## Status
 
-**Version:** `0.1.0-alpha` (Batch 8 — update planning)
+**Version:** `0.1.0-alpha` (Batch 9 — recovery preparation)
 
 Current capabilities:
 
@@ -20,17 +20,19 @@ Current capabilities:
 - Windows Update driver scan via WUA (recommended/optional, managed-policy aware)
 - Recommendation engine combining devices, updates, and risk policy
 - Frozen update plans with staleness detection, preflight checks, and simulated transactions (no mutation)
+- Recovery preparation with before snapshots, export abstraction, and recovery manifest export
 - WPF app with Overview, Devices, Updates, Safety, History, Settings, and About pages
 - Light/dark themes, scan coordination, and persistent SQLite scan history
-- Redacted JSON diagnostics export via CLI
-- `tortoise scan`, `tortoise devices`, `tortoise packages`, `tortoise updates`, `tortoise recommend`, `tortoise plan`, `tortoise preflight`, `tortoise simulate`, and `tortoise export-report` CLI on Windows
+- Redacted JSON diagnostics and recovery manifest export via CLI
+- `tortoise recommend`, `tortoise plan`, `tortoise preflight`, `tortoise simulate`, `tortoise recover`, and `tortoise export-report` CLI on Windows
 - Initial documentation and architecture decision records
 - CI scaffolding
 
 Current limitations:
 
 - No driver installation (mutation permanently disabled during early development)
-- Recovery preparation and broker elevation not implemented yet (Batch 9+)
+- Driver package export remains disabled during read-only development
+- Broker elevation not implemented yet (Batch 10+)
 
 ## Supported platform
 

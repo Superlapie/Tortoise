@@ -59,5 +59,26 @@ internal static class MigrationScripts
             CREATE INDEX IF NOT EXISTS ix_update_transactions_plan_id
                 ON update_transactions(plan_id);
             """),
+        (
+            3,
+            """
+            CREATE TABLE IF NOT EXISTS recovery_preparations (
+                preparation_id TEXT PRIMARY KEY,
+                plan_id TEXT NOT NULL,
+                transaction_id TEXT,
+                prepared_at_utc TEXT NOT NULL,
+                device_instance_id TEXT NOT NULL,
+                export_succeeded INTEGER NOT NULL,
+                system_restore_enabled INTEGER NOT NULL,
+                payload_json TEXT NOT NULL,
+                FOREIGN KEY (plan_id) REFERENCES update_plans(plan_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_recovery_preparations_plan_id
+                ON recovery_preparations(plan_id);
+
+            CREATE INDEX IF NOT EXISTS ix_recovery_preparations_prepared_at_utc
+                ON recovery_preparations(prepared_at_utc DESC);
+            """),
     ];
 }
