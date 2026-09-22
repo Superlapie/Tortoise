@@ -1,10 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using Tortoise.Core.Diagnostics;
 using Tortoise.Core.Planning;
+using Tortoise.Core.Pilot;
 using Tortoise.Core.Recovery;
 using Tortoise.Core.ScanSessions;
 using Tortoise.Persistence.Diagnostics;
 using Tortoise.Persistence.Options;
+using Tortoise.Persistence.Pilot;
 using Tortoise.Persistence.Planning;
 using Tortoise.Persistence.Recovery;
 using Tortoise.Persistence.ScanSessions;
@@ -29,6 +31,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IUpdateTransactionStore, SqliteUpdateTransactionStore>();
         services.AddSingleton<IRecoveryPreparationStore, SqliteRecoveryPreparationStore>();
         services.AddSingleton<IRecoveryManifestExporter, RecoveryManifestExporter>();
+        services.AddSingleton<IPilotConfirmationStore, SqlitePilotConfirmationStore>();
         return services;
     }
 }

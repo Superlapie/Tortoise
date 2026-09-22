@@ -10,6 +10,8 @@ public static class TortoiseEnvironmentVariables
 
     public const string FaultInjection = "TORTOISE_FAULT_INJECTION";
 
+    public const string PhysicalPilot = "TORTOISE_PHYSICAL_PILOT";
+
     public static bool IsTruthy(string? value) =>
         value is "1" or "true" or "TRUE" or "yes" or "YES";
 }

@@ -100,15 +100,18 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 - Broker `InstallDriver` enabled only in disposable VM mode
 - CLI `tortoise vm install` and `tortoise vm status`
 
-### Batch 13 — Fault injection ✅ (current)
+### Batch 13 — Fault injection ✅
 
 - Simulated crash, reboot, network, and candidate disappearance scenarios
 - Durable transaction journal markers and reconciliation guidance
 - CLI `tortoise fault run` and `tortoise fault reconcile`
 
-### Batch 14 — Physical pilot readiness
+### Batch 14 — Physical pilot readiness ✅ (current)
 
 - Pilot checklist, final confirmation UI, recovery docs
+- Environment markers: `TORTOISE_MUTATION_TESTS=1`, `TORTOISE_PHYSICAL_PILOT=1`, non-VM host
+- CLI `tortoise pilot checklist`, `tortoise pilot confirm`, and `tortoise pilot recovery-doc`
+- WPF Pilot page records readiness only — does not install drivers
 
 ### Batch 15 — Release engineering
 

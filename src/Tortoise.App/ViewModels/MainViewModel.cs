@@ -13,6 +13,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly DevicesViewModel _devices;
     private readonly UpdatesViewModel _updates;
     private readonly SafetyViewModel _safety;
+    private readonly PilotViewModel _pilot;
     private readonly HistoryViewModel _history;
     private readonly SettingsViewModel _settingsViewModel;
     private readonly AboutViewModel _about;
@@ -28,6 +29,7 @@ public sealed partial class MainViewModel : ObservableObject
         DevicesViewModel devices,
         UpdatesViewModel updates,
         SafetyViewModel safety,
+        PilotViewModel pilot,
         HistoryViewModel history,
         SettingsViewModel settingsViewModel,
         AboutViewModel about)
@@ -39,6 +41,7 @@ public sealed partial class MainViewModel : ObservableObject
         _devices = devices;
         _updates = updates;
         _safety = safety;
+        _pilot = pilot;
         _history = history;
         _settingsViewModel = settingsViewModel;
         _about = about;
@@ -50,6 +53,7 @@ public sealed partial class MainViewModel : ObservableObject
             new NavigationItem("Devices", devices, NavigateDevicesCommand),
             new NavigationItem("Updates", updates, NavigateUpdatesCommand),
             new NavigationItem("Safety", safety, NavigateSafetyCommand),
+            new NavigationItem("Pilot", pilot, NavigatePilotCommand),
             new NavigationItem("History", history, NavigateHistoryCommand),
             new NavigationItem("Settings", settingsViewModel, NavigateSettingsCommand),
             new NavigationItem("About", about, NavigateAboutCommand),
@@ -102,6 +106,13 @@ public sealed partial class MainViewModel : ObservableObject
 
     [RelayCommand]
     private void NavigateSafety() => CurrentPage = _safety;
+
+    [RelayCommand]
+    private void NavigatePilot()
+    {
+        CurrentPage = _pilot;
+        _ = _pilot.RefreshPlansCommand.ExecuteAsync(null);
+    }
 
     [RelayCommand]
     private void NavigateHistory() => CurrentPage = _history;

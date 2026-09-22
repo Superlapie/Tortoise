@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Batch 14 physical pilot readiness checklist, confirmation recording, recovery guide, and WPF Pilot page
+- Environment marker `TORTOISE_PHYSICAL_PILOT=1` and CLI commands `tortoise pilot checklist`, `tortoise pilot confirm`, and `tortoise pilot recovery-doc`
 - Batch 13 fault injection scenarios (process crash, unexpected reboot, network failure, candidate disappearance) with reconciliation
 - Environment marker `TORTOISE_FAULT_INJECTION=1` and CLI commands `tortoise fault list`, `tortoise fault run`, and `tortoise fault reconcile`
 - Batch 12 VM-gated Windows Update driver install for one low-risk plan via broker `InstallDriver` and WUA

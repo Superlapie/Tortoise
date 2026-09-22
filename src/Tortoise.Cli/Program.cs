@@ -6,6 +6,7 @@ using Tortoise.Core.Drivers;
 using Tortoise.Core.FaultInjection;
 using Tortoise.Core.Installation;
 using Tortoise.Core.Mutation;
+using Tortoise.Core.Pilot;
 using Tortoise.Core.Planning;
 using Tortoise.Core.Recovery;
 using Tortoise.Core.Recommendations;
@@ -40,6 +41,7 @@ return command switch
     "workflow" => await RunWorkflowAsync(args),
     "vm" => await RunVmAsync(args),
     "fault" => await RunFaultAsync(args),
+    "pilot" => await RunPilotAsync(args),
     "recover" => await RunRecoverAsync(args),
     "broker" => await RunBrokerAsync(args),
     "status" => RunStatus(),
@@ -67,6 +69,9 @@ static int PrintUsage()
     Console.WriteLine("  tortoise fault list");
     Console.WriteLine("  tortoise fault run <scenario> <plan-id> [--db=path]");
     Console.WriteLine("  tortoise fault reconcile <transaction-id> [--db=path]");
+    Console.WriteLine("  tortoise pilot checklist <plan-id> [--db=path]");
+    Console.WriteLine("  tortoise pilot confirm <plan-id> --phrase=... [--ack=id]... [--db=path]");
+    Console.WriteLine("  tortoise pilot recovery-doc [--export=path]");
     Console.WriteLine("  tortoise recover prepare <plan-id> [--output-dir=path] [--db=path]");
     Console.WriteLine("  tortoise recover list [--plan-id=guid] [--db=path]");
     Console.WriteLine("  tortoise recover export <preparation-id> <path> [--db=path]");
@@ -98,6 +103,7 @@ static int RunStatus()
     Console.WriteLine($"Disposable VM detected: {environment.IsDisposableVm}");
     Console.WriteLine($"Mutation tests marker: {environment.MutationTestsEnabled}");
     Console.WriteLine($"VM install marker: {environment.VmInstallExplicitlyAllowed}");
+    Console.WriteLine($"Physical pilot marker: {environment.PhysicalPilotExplicitlyAllowed}");
     Console.WriteLine($"Platform: {(OperatingSystem.IsWindows() ? "Windows" : "Unsupported for device scan")}");
     return 0;
 }
@@ -553,6 +559,123 @@ static async Task<int> RunVmInstallAsync(string[] args)
     }
 }
 
+static async Task<int> RunPilotAsync(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: tortoise pilot <checklist|confirm|recovery-doc> ...");
+        return 1;
+    }
+
+    return args[1].ToLowerInvariant() switch
+    {
+        "checklist" => await RunPilotChecklistAsync(args),
+        "confirm" => await RunPilotConfirmAsync(args),
+        "recovery-doc" => await RunPilotRecoveryDocAsync(args),
+        _ => PrintUnknown(args[1]),
+    };
+}
+
+static async Task<int> RunPilotChecklistAsync(string[] args)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("Physical pilot checklist requires Windows.");
+        return 1;
+    }
+
+    if (args.Length < 3 || !Guid.TryParse(args[2], out var planId))
+    {
+        Console.Error.WriteLine("Usage: tortoise pilot checklist <plan-id> [--db=path]");
+        return 1;
+    }
+
+    var services = new ServiceCollection();
+    services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+    services.AddTortoisePhysicalPilotReadiness();
+    var provider = services.BuildServiceProvider();
+    var scanStore = provider.GetRequiredService<IScanSessionStore>();
+    var checklistService = provider.GetRequiredService<IPhysicalPilotChecklistService>();
+    await scanStore.InitializeAsync();
+
+    var result = await checklistService.EvaluateAsync(planId);
+
+    Console.WriteLine($"Plan: {result.PlanId}");
+    Console.WriteLine($"Ready: {result.IsReady}");
+    Console.WriteLine(result.Summary);
+    Console.WriteLine();
+
+    foreach (var item in result.Items)
+    {
+        Console.WriteLine($"{item.Title}: {item.Status}");
+        Console.WriteLine($"  {item.Detail}");
+    }
+
+    return result.IsReady ? 0 : 2;
+}
+
+static async Task<int> RunPilotConfirmAsync(string[] args)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("Physical pilot confirmation requires Windows.");
+        return 1;
+    }
+
+    if (args.Length < 3 || !Guid.TryParse(args[2], out var planId))
+    {
+        Console.Error.WriteLine("Usage: tortoise pilot confirm <plan-id> --phrase=... [--ack=id]... [--db=path]");
+        return 1;
+    }
+
+    var phrase = ParseConfirmationPhrase(args);
+    if (phrase is null)
+    {
+        Console.Error.WriteLine("Missing required --phrase= argument.");
+        return 1;
+    }
+
+    var services = new ServiceCollection();
+    services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+    services.AddTortoisePhysicalPilotReadiness();
+    var provider = services.BuildServiceProvider();
+    var scanStore = provider.GetRequiredService<IScanSessionStore>();
+    var confirmationService = provider.GetRequiredService<IPhysicalPilotConfirmationService>();
+    await scanStore.InitializeAsync();
+
+    var result = await confirmationService.ConfirmAsync(
+        new PhysicalPilotConfirmationRequest(
+            planId,
+            phrase,
+            ParseAcknowledgementIds(args)));
+
+    Console.WriteLine(result.Summary);
+    Console.WriteLine($"Accepted: {result.Accepted}");
+    Console.WriteLine($"Confirmation: {result.Record.ConfirmationId}");
+    Console.WriteLine($"Checklist ready: {result.Record.ChecklistReady}");
+
+    return result.Accepted ? 0 : 2;
+}
+
+static async Task<int> RunPilotRecoveryDocAsync(string[] args)
+{
+    var services = new ServiceCollection();
+    services.AddTortoisePhysicalPilotReadiness();
+    var guide = services.BuildServiceProvider().GetRequiredService<IPhysicalPilotRecoveryGuide>();
+    var markdown = guide.GetMarkdown();
+    var exportPath = ParseExportPath(args);
+
+    if (exportPath is not null)
+    {
+        await guide.ExportAsync(exportPath);
+        Console.WriteLine($"Exported physical pilot recovery guide to {exportPath}");
+        return 0;
+    }
+
+    Console.WriteLine(markdown);
+    return 0;
+}
+
 static async Task<int> RunFaultAsync(string[] args)
 {
     if (args.Length < 2)
@@ -769,6 +892,46 @@ static string? ParseOutputDirectory(string[] args)
     }
 
     return null;
+}
+
+static string? ParseExportPath(string[] args)
+{
+    foreach (var arg in args)
+    {
+        if (arg.StartsWith("--export=", StringComparison.OrdinalIgnoreCase))
+        {
+            return arg["--export=".Length..];
+        }
+    }
+
+    return null;
+}
+
+static string? ParseConfirmationPhrase(string[] args)
+{
+    foreach (var arg in args)
+    {
+        if (arg.StartsWith("--phrase=", StringComparison.OrdinalIgnoreCase))
+        {
+            return arg["--phrase=".Length..];
+        }
+    }
+
+    return null;
+}
+
+static IReadOnlyList<string> ParseAcknowledgementIds(string[] args)
+{
+    var ids = new List<string>();
+    foreach (var arg in args)
+    {
+        if (arg.StartsWith("--ack=", StringComparison.OrdinalIgnoreCase))
+        {
+            ids.Add(arg["--ack=".Length..]);
+        }
+    }
+
+    return ids;
 }
 
 static Guid? ParsePlanGuid(string[] args)

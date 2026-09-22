@@ -44,6 +44,17 @@ All three conditions (disposable VM detection or marker, mutation tests, VM inst
 
 Fault injection scenarios require `TORTOISE_FAULT_INJECTION=1` and never mutate real drivers — they simulate interrupted workflows for resilience testing.
 
+Physical pilot readiness requires explicit markers on a non-VM host:
+
+```bash
+TORTOISE_MUTATION_TESTS=1
+TORTOISE_PHYSICAL_PILOT=1
+```
+
+Pilot checklist and confirmation record readiness only. They do not install drivers automatically.
+
+See [docs/PHYSICAL_PILOT_RECOVERY.md](docs/PHYSICAL_PILOT_RECOVERY.md) before any physical pilot work.
+
 ## Commits
 
 Use clear, focused commits. Do not bundle unrelated changes.

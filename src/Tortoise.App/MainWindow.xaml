@@ -21,6 +21,9 @@
         <DataTemplate DataType="{x:Type vm:SafetyViewModel}">
             <views:SafetyPage />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:PilotViewModel}">
+            <views:PilotPage />
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:HistoryViewModel}">
             <views:HistoryPage />
         </DataTemplate>

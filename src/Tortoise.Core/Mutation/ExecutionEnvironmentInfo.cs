@@ -3,7 +3,8 @@ namespace Tortoise.Core.Mutation;
 public sealed record ExecutionEnvironmentInfo(
     bool IsDisposableVm,
     bool MutationTestsEnabled,
-    bool VmInstallExplicitlyAllowed);
+    bool VmInstallExplicitlyAllowed,
+    bool PhysicalPilotExplicitlyAllowed = false);
 
 public interface IExecutionEnvironmentDetector
 {
@@ -26,5 +27,6 @@ public sealed class UnsupportedExecutionEnvironmentDetector : IExecutionEnvironm
         new(
             IsDisposableVm: false,
             MutationTestsEnabled: false,
-            VmInstallExplicitlyAllowed: false);
+            VmInstallExplicitlyAllowed: false,
+            PhysicalPilotExplicitlyAllowed: false);
 }

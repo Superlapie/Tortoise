@@ -16,11 +16,14 @@ public sealed class WindowsExecutionEnvironmentDetector : IExecutionEnvironmentD
             global::System.Environment.GetEnvironmentVariable(TortoiseEnvironmentVariables.AllowVmInstall));
         var vmMarker = TortoiseEnvironmentVariables.IsTruthy(
             global::System.Environment.GetEnvironmentVariable(TortoiseEnvironmentVariables.VmMarker));
+        var physicalPilot = TortoiseEnvironmentVariables.IsTruthy(
+            global::System.Environment.GetEnvironmentVariable(TortoiseEnvironmentVariables.PhysicalPilot));
 
         return new ExecutionEnvironmentInfo(
             IsDisposableVm: vmMarker || DetectGuestVm(),
             mutationTests,
-            allowVmInstall);
+            allowVmInstall,
+            physicalPilot);
     }
 
     private static bool DetectGuestVm()

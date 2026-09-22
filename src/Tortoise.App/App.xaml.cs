@@ -21,6 +21,7 @@ public partial class App : Application
             {
                 services.AddTortoiseRecommendations();
                 services.AddTortoisePersistence();
+                services.AddTortoisePhysicalPilotReadiness();
                 services.AddSingleton<AppSettings>();
                 services.AddSingleton<AppSessionState>();
                 services.AddSingleton<ScanCoordinator>();
@@ -28,6 +29,7 @@ public partial class App : Application
                 services.AddSingleton<DevicesViewModel>();
                 services.AddSingleton<UpdatesViewModel>();
                 services.AddSingleton<SafetyViewModel>();
+                services.AddSingleton<PilotViewModel>();
                 services.AddSingleton<HistoryViewModel>();
                 services.AddSingleton<SettingsViewModel>();
                 services.AddSingleton<AboutViewModel>();

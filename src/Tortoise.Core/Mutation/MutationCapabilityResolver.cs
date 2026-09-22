@@ -18,6 +18,16 @@ public static class MutationCapabilityResolver
                 reason: "Disposable VM install enabled via explicit environment markers.");
         }
 
+        if (!environment.IsDisposableVm
+            && environment.MutationTestsEnabled
+            && environment.PhysicalPilotExplicitlyAllowed)
+        {
+            return new MutationCapability(
+                isEnabled: true,
+                environment: MutationEnvironment.PhysicalPilot,
+                reason: "Physical pilot install enabled via explicit environment markers.");
+        }
+
         return MutationCapability.ReadOnly;
     }
 }

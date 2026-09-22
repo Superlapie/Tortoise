@@ -5,6 +5,7 @@ using Tortoise.Core.Drivers;
 using Tortoise.Core.FaultInjection;
 using Tortoise.Core.Installation;
 using Tortoise.Core.Mutation;
+using Tortoise.Core.Pilot;
 using Tortoise.Core.Planning;
 using Tortoise.Core.Recovery;
 using Tortoise.Core.Recommendations;
@@ -93,6 +94,17 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISystemEnvironmentProvider, WindowsSystemEnvironmentProvider>();
         services.AddSingleton<ISystemRestoreInfoProvider, WindowsSystemRestoreInfoProvider>();
         services.AddSingleton<IRecoveryPreparationService, RecoveryPreparationService>();
+        return services;
+    }
+
+    [SupportedOSPlatform("windows")]
+    public static IServiceCollection AddTortoisePhysicalPilotReadiness(this IServiceCollection services)
+    {
+        services.AddTortoiseRecoveryPreparation();
+        services.AddSingleton<IExecutionEnvironmentDetector, WindowsExecutionEnvironmentDetector>();
+        services.AddSingleton<IPhysicalPilotChecklistService, PhysicalPilotChecklistService>();
+        services.AddSingleton<IPhysicalPilotConfirmationService, PhysicalPilotConfirmationService>();
+        services.AddSingleton<IPhysicalPilotRecoveryGuide, PhysicalPilotRecoveryGuide>();
         return services;
     }
 }
