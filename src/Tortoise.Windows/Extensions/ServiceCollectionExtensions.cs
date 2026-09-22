@@ -2,8 +2,11 @@ using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
 using Tortoise.Core.Devices;
 using Tortoise.Core.Drivers;
+using Tortoise.Core.Recommendations;
+using Tortoise.Core.Updates;
 using Tortoise.Windows.Devices;
 using Tortoise.Windows.Drivers;
+using Tortoise.WindowsUpdate.Extensions;
 
 namespace Tortoise.Windows.Extensions;
 
@@ -22,6 +25,16 @@ public static class ServiceCollectionExtensions
         services.AddTortoiseWindowsDeviceInventory();
         services.AddSingleton<IDriverPackageInventoryProvider, WindowsDriverPackageInventoryProvider>();
         services.AddSingleton<IDriverPackageExportService, DisabledDriverPackageExportService>();
+        return services;
+    }
+
+    [SupportedOSPlatform("windows")]
+    public static IServiceCollection AddTortoiseRecommendations(this IServiceCollection services)
+    {
+        services.AddTortoiseWindowsDeviceInventory();
+        services.AddTortoiseWindowsUpdate();
+        services.AddSingleton<IRecommendationEngine, RecommendationEngine>();
+        services.AddSingleton<IRecommendationScanService, RecommendationScanService>();
         return services;
     }
 }

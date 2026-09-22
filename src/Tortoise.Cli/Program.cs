@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Tortoise.Contracts.Mutation;
 using Tortoise.Core.Devices;
 using Tortoise.Core.Drivers;
+using Tortoise.Core.Recommendations;
 using Tortoise.Core.Updates;
 using Tortoise.Windows.Extensions;
 using Tortoise.WindowsUpdate.Extensions;
@@ -18,6 +19,7 @@ return command switch
     "scan" or "devices" => await RunDeviceScanAsync(args),
     "packages" or "drivers" => await RunPackageScanAsync(args),
     "updates" => await RunUpdatesScanAsync(args),
+    "recommend" or "recommendations" => await RunRecommendationsAsync(args),
     "status" => RunStatus(),
     _ => PrintUnknown(command),
 };
@@ -31,6 +33,7 @@ static int PrintUsage()
     Console.WriteLine("  tortoise devices [--problem]");
     Console.WriteLine("  tortoise packages");
     Console.WriteLine("  tortoise updates [--optional]");
+    Console.WriteLine("  tortoise recommend [--optional]");
     Console.WriteLine("  tortoise status");
     return 0;
 }
@@ -179,6 +182,65 @@ static async Task<int> RunUpdatesScanAsync(string[] args)
     }
 
     Console.WriteLine($"Candidates: {result.Candidates.Count}");
+    if (result.Warnings.Count > 0)
+    {
+        Console.WriteLine($"Warnings: {result.Warnings.Count}");
+    }
+
+    return 0;
+}
+
+static async Task<int> RunRecommendationsAsync(string[] args)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("Recommendations require Windows.");
+        return 1;
+    }
+
+    var includeOptional = args.Contains("--optional", StringComparer.OrdinalIgnoreCase);
+    var services = new ServiceCollection();
+    services.AddTortoiseRecommendations();
+    var service = services.BuildServiceProvider().GetRequiredService<IRecommendationScanService>();
+    var result = await service.ScanAsync(new RecommendationOptions(IncludeOptionalUpdates: includeOptional));
+
+    Console.WriteLine(result.UpdatePolicy.DisplayMessage);
+    Console.WriteLine();
+
+    var recommendations = result.Recommendations.AsEnumerable();
+    if (!includeOptional)
+    {
+        recommendations = recommendations.Where(recommendation =>
+            recommendation.Classification != UpdateClassification.WindowsOptional);
+    }
+
+    foreach (var recommendation in recommendations
+                 .OrderBy(entry => entry.Classification)
+                 .ThenBy(entry => entry.Device.Snapshot.Identity.FriendlyName))
+    {
+        var device = recommendation.Device.Snapshot.Identity;
+        Console.WriteLine(device.FriendlyName);
+        Console.WriteLine($"  Class: {device.ClassName}");
+        Console.WriteLine($"  Status: {recommendation.Summary}");
+        Console.WriteLine($"  Risk: {recommendation.RiskLevel}");
+        Console.WriteLine($"  Why: {recommendation.Explanation}");
+
+        if (recommendation.ApplicableUpdate is not null)
+        {
+            Console.WriteLine($"  Package: {recommendation.ApplicableUpdate.Title}");
+        }
+
+        Console.WriteLine();
+    }
+
+    var actionable = result.Recommendations.Count(recommendation =>
+        recommendation.Classification is UpdateClassification.WindowsRecommended
+            or UpdateClassification.WindowsOptional
+            or UpdateClassification.ReviewRequired);
+
+    Console.WriteLine($"Devices evaluated: {result.Recommendations.Count}");
+    Console.WriteLine($"Actionable recommendations: {actionable.ToString()}");
+    Console.WriteLine($"Unmatched Windows Update packages: {result.UnmatchedUpdates.Count}");
     if (result.Warnings.Count > 0)
     {
         Console.WriteLine($"Warnings: {result.Warnings.Count}");

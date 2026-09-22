@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Batch 4 Windows Update scanning via WUA COM wrapper
-- Driver-only search with recommended/optional classification and managed-policy detection
-- `tortoise updates [--optional]` CLI command
+- Batch 5 recommendation engine combining device inventory, WUA results, and risk policy
+- Conservative applicability matching that never prefers higher version numbers alone
+- `tortoise recommend [--optional]` CLI command
 
 ## [0.1.0-alpha] - TBD
 

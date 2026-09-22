@@ -10,4 +10,8 @@
     <ProjectReference Include="..\Tortoise.Contracts\Tortoise.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tortoise.Core.Tests" />
+  </ItemGroup>
+
 </Project>

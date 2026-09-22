@@ -54,12 +54,12 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 - Package enumeration and device/package association
 - PnPUtil structured fallback (read-only)
 
-### Batch 4 — Windows Update scanning ✅ (current)
+### Batch 4 — Windows Update scanning ✅
 
 - WUA wrapper, driver-only search
 - Recommended vs optional, managed-policy handling
 
-### Batch 5 — Recommendation engine
+### Batch 5 — Recommendation engine ✅ (current)
 
 - Combine installed driver, applicable update, risk class
 - Never mislabel "latest"
