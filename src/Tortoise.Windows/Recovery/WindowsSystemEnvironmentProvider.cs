@@ -9,6 +9,13 @@ namespace Tortoise.Windows.Recovery;
 [SupportedOSPlatform("windows")]
 public sealed class WindowsSystemEnvironmentProvider : ISystemEnvironmentProvider
 {
+    private readonly IPendingRebootDetector _pendingRebootDetector;
+
+    public WindowsSystemEnvironmentProvider(IPendingRebootDetector? pendingRebootDetector = null)
+    {
+        _pendingRebootDetector = pendingRebootDetector ?? new WindowsPendingRebootDetector();
+    }
+
     public Task<SystemSnapshot> CaptureAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -16,33 +23,10 @@ public sealed class WindowsSystemEnvironmentProvider : ISystemEnvironmentProvide
         var snapshot = new SystemSnapshot(
             Environment.OSVersion.VersionString,
             RuntimeInformation.OSArchitecture.ToString(),
-            IsPendingReboot(),
+            _pendingRebootDetector.IsPendingReboot(),
             DateTimeOffset.UtcNow);
 
         return Task.FromResult(snapshot);
-    }
-
-    private static bool IsPendingReboot()
-    {
-        try
-        {
-            using var sessionManager = Registry.LocalMachine.OpenSubKey(
-                @"SYSTEM\CurrentControlSet\Control\Session Manager");
-            var pendingRenames = sessionManager?.GetValue("PendingFileRenameOperations") as string[];
-            if (pendingRenames is { Length: > 0 })
-            {
-                return true;
-            }
-
-            using var updateKey = Registry.LocalMachine.OpenSubKey(
-                @"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update");
-            var rebootRequired = updateKey?.GetValue("RebootRequired");
-            return rebootRequired is not null;
-        }
-        catch
-        {
-            return false;
-        }
     }
 }
 

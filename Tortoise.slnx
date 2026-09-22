@@ -21,5 +21,7 @@
     <Project Path="tests/Tortoise.Security.Tests/Tortoise.Security.Tests.csproj" />
     <Project Path="tests/Tortoise.Windows.Tests/Tortoise.Windows.Tests.csproj" />
     <Project Path="tests/Tortoise.WindowsUpdate.Tests/Tortoise.WindowsUpdate.Tests.csproj" />
+    <Project Path="tests/Tortoise.BrokerPipeProbe/Tortoise.BrokerPipeProbe.csproj" />
+    <Project Path="tests/Tortoise.MutationLockProbe/Tortoise.MutationLockProbe.csproj" />
   </Folder>
 </Solution>

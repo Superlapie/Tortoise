@@ -128,7 +128,7 @@ internal interface IUpdate2 : IUpdate
 }
 
 [ComImport]
-[Guid("BA141583-A115-4ACA-9962-EDABC745AEA9")]
+[Guid("112EDA6B-95B3-476F-9D90-AEE82C6B8181")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdate3 : IUpdate2
 {
@@ -137,9 +137,18 @@ internal interface IUpdate3 : IUpdate2
 }
 
 [ComImport]
+[Guid("704EB274-037E-4193-9A31-F1AF54EF8746")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IUpdate4 : IUpdate3
+{
+    [DispId(0x60050001)]
+    bool PerUser { get; }
+}
+
+[ComImport]
 [Guid("C1C2F21A-D2F4-4902-B5C6-8A081C19A890")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
-internal interface IUpdate5 : IUpdate2
+internal interface IUpdate5 : IUpdate4
 {
     [DispId(0x60060001)]
     AutoSelectionMode AutoSelection { get; }
@@ -167,6 +176,15 @@ internal interface IWindowsDriverUpdate : IUpdate
 
     [DispId(0x60030006)]
     DateTime DriverVerDate { get; }
+}
+
+[ComImport]
+[Guid("49EBD502-4A96-41BD-9E3E-4C5057F4250C")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IWindowsDriverUpdate3 : IWindowsDriverUpdate
+{
+    [DispId(0x60040001)]
+    bool BrowseOnly { get; }
 }
 
 [ComImport]

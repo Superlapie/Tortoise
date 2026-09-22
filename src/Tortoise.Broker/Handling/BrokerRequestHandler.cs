@@ -134,17 +134,6 @@ public sealed class BrokerRequestHandler
                 boundary.Message);
         }
 
-        using var servicingLock = MutationServicingLock.TryAcquire();
-        var lockBoundary = BrokerInstallBoundaryGuard.ValidateServicingLock(servicingLock);
-        if (!lockBoundary.IsAllowed)
-        {
-            return new BrokerResponse(
-                request.RequestId,
-                false,
-                BrokerErrorCode.MutationDisabled,
-                lockBoundary.Message);
-        }
-
         var capability = MutationCapabilityResolver.Resolve(_environmentDetector.Detect());
         if (!capability.IsEnabled || capability.Environment != MutationEnvironment.DisposableVm)
         {
@@ -220,6 +209,17 @@ public sealed class BrokerRequestHandler
                 false,
                 BrokerErrorCode.PlanValidationFailed,
                 toctou.Message);
+        }
+
+        using var servicingLock = MutationServicingLock.TryAcquire();
+        var lockBoundary = BrokerInstallBoundaryGuard.ValidateServicingLock(servicingLock);
+        if (!lockBoundary.IsAllowed)
+        {
+            return new BrokerResponse(
+                request.RequestId,
+                false,
+                BrokerErrorCode.MutationDisabled,
+                lockBoundary.Message);
         }
 
         var installResult = await _installService.InstallPreparedAsync(

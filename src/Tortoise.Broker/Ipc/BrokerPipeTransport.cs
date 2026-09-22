@@ -22,6 +22,8 @@ namespace Tortoise.Broker.Ipc;
 
 public sealed class BrokerPipeServer
 {
+    private static readonly TimeSpan AuthorizedClientListenDeadline = TimeSpan.FromSeconds(30);
+
     private readonly BrokerRequestHandler _handler;
 
     public BrokerPipeServer(BrokerRequestHandler handler) => _handler = handler;
@@ -39,6 +41,12 @@ public sealed class BrokerPipeServer
                 PipeTransmissionMode.Byte,
                 PipeOptions.Asynchronous);
 
+        if (options.AuthorizedClientProcessId.HasValue && OperatingSystem.IsWindows())
+        {
+            await ServeWithClientBindingAsync(server, options, cancellationToken);
+            return;
+        }
+
         await server.WaitForConnectionAsync(cancellationToken);
 
         if (!BrokerPipeClientIdentity.IsAuthorizedClient(
@@ -46,21 +54,79 @@ public sealed class BrokerPipeServer
                 options.AuthorizedClientProcessId,
                 out var clientIdentityError))
         {
-            var unauthorizedResponse = new BrokerResponse(
-                Guid.Empty,
-                false,
-                BrokerErrorCode.ClientProcessMismatch,
-                clientIdentityError ?? "Named pipe client is not authorized.");
-            var unauthorizedJson = BrokerMessageSerializer.SerializeResponse(unauthorizedResponse);
-            await BrokerMessageSerializer.WriteMessageAsync(server, unauthorizedJson, cancellationToken);
+            await WriteUnauthorizedResponseAsync(server, clientIdentityError, cancellationToken);
             return;
         }
 
+        await ProcessAuthorizedConnectionAsync(server, options, cancellationToken);
+    }
+
+    private async Task ServeWithClientBindingAsync(
+        NamedPipeServerStream server,
+        BrokerHostOptions options,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow.Add(AuthorizedClientListenDeadline);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            var remaining = deadline - DateTime.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                return;
+            }
+
+            using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            waitCts.CancelAfter(remaining);
+
+            try
+            {
+                await server.WaitForConnectionAsync(waitCts.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (!BrokerPipeClientIdentity.IsAuthorizedClient(
+                    server,
+                    options.AuthorizedClientProcessId,
+                    out var clientIdentityError))
+            {
+                await WriteUnauthorizedResponseAsync(server, clientIdentityError, cancellationToken);
+                server.Disconnect();
+                continue;
+            }
+
+            await ProcessAuthorizedConnectionAsync(server, options, cancellationToken);
+            return;
+        }
+    }
+
+    private async Task ProcessAuthorizedConnectionAsync(
+        PipeStream server,
+        BrokerHostOptions options,
+        CancellationToken cancellationToken)
+    {
         var requestJson = await BrokerMessageSerializer.ReadMessageAsync(server, cancellationToken);
         var request = BrokerMessageSerializer.DeserializeRequest(requestJson);
         var response = await _handler.HandleAsync(request, options, cancellationToken);
         var responseJson = BrokerMessageSerializer.SerializeResponse(response);
         await BrokerMessageSerializer.WriteMessageAsync(server, responseJson, cancellationToken);
+    }
+
+    private static async Task WriteUnauthorizedResponseAsync(
+        PipeStream server,
+        string? clientIdentityError,
+        CancellationToken cancellationToken)
+    {
+        var unauthorizedResponse = new BrokerResponse(
+            Guid.Empty,
+            false,
+            BrokerErrorCode.ClientProcessMismatch,
+            clientIdentityError ?? "Named pipe client is not authorized.");
+        var unauthorizedJson = BrokerMessageSerializer.SerializeResponse(unauthorizedResponse);
+        await BrokerMessageSerializer.WriteMessageAsync(server, unauthorizedJson, cancellationToken);
     }
 
     [SupportedOSPlatform("windows")]

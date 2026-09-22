@@ -15,9 +15,21 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Tortoise.Broker\Tortoise.Broker.csproj" />
     <ProjectReference Include="..\..\src\Tortoise.Contracts\Tortoise.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Tortoise.Core\Tortoise.Core.csproj" />
+    <ProjectReference Include="..\..\src\Tortoise.Windows\Tortoise.Windows.csproj" />
+    <ProjectReference Include="..\Tortoise.MutationLockProbe\Tortoise.MutationLockProbe.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
+
+  <Target Name="CopyMutationLockProbeForTests" AfterTargets="Build">
+    <ItemGroup>
+      <MutationLockProbeFiles Include="..\Tortoise.MutationLockProbe\bin\$(Configuration)\$(TargetFramework)\tortoise-mutation-lock-probe.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(MutationLockProbeFiles)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <Using Include="Xunit" />

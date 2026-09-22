@@ -18,6 +18,12 @@
     <ProjectReference Include="..\..\src\Tortoise.Broker\Tortoise.Broker.csproj" />
     <ProjectReference Include="..\..\src\Tortoise.Contracts\Tortoise.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Tortoise.Core\Tortoise.Core.csproj" />
+    <ProjectReference Include="..\Tortoise.BrokerPipeProbe\Tortoise.BrokerPipeProbe.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\Tortoise.MutationLockProbe\Tortoise.MutationLockProbe.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
     <ProjectReference Include="..\..\src\Tortoise.LabBroker\Tortoise.LabBroker.csproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
@@ -29,6 +35,15 @@
       <LabBrokerFiles Include="..\..\src\Tortoise.LabBroker\bin\$(Configuration)\$(TargetFramework)\tortoise-lab-broker.*" />
     </ItemGroup>
     <Copy SourceFiles="@(LabBrokerFiles)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyBrokerProbesForTests" AfterTargets="Build">
+    <ItemGroup>
+      <BrokerPipeProbeFiles Include="..\Tortoise.BrokerPipeProbe\bin\$(Configuration)\$(TargetFramework)\tortoise-broker-pipe-probe.*" />
+      <MutationLockProbeFiles Include="..\Tortoise.MutationLockProbe\bin\$(Configuration)\$(TargetFramework)\tortoise-mutation-lock-probe.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(BrokerPipeProbeFiles)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(MutationLockProbeFiles)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
   </Target>
 
   <ItemGroup>

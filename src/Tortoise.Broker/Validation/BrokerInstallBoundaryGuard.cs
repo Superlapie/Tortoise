@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using Tortoise.Core.Mutation;
+using Tortoise.Core.Recovery;
 using Tortoise.Windows.Recovery;
 
 namespace Tortoise.Broker.Validation;
@@ -8,15 +9,15 @@ public sealed record BrokerInstallBoundaryResult(bool IsAllowed, string Message)
 
 public static class BrokerInstallBoundaryGuard
 {
-    public static BrokerInstallBoundaryResult ValidateEnvironment()
+    public static BrokerInstallBoundaryResult ValidateEnvironment(IPendingRebootDetector? pendingRebootDetector = null)
     {
-        if (OperatingSystem.IsWindows())
+        pendingRebootDetector ??= OperatingSystem.IsWindows()
+            ? new WindowsPendingRebootDetector()
+            : null;
+
+        if (pendingRebootDetector?.IsPendingReboot() == true)
         {
-            var pendingReboot = IsPendingReboot();
-            if (pendingReboot)
-            {
-                return Deny("Elevated broker install blocked because a system reboot is pending.");
-            }
+            return Deny("Elevated broker install blocked because a system reboot is pending.");
         }
 
         return Allow();
@@ -31,13 +32,6 @@ public static class BrokerInstallBoundaryGuard
         }
 
         return Allow();
-    }
-
-    [SupportedOSPlatform("windows")]
-    private static bool IsPendingReboot()
-    {
-        var provider = new WindowsSystemEnvironmentProvider();
-        return provider.CaptureAsync().GetAwaiter().GetResult().PendingReboot;
     }
 
     private static BrokerInstallBoundaryResult Allow() =>

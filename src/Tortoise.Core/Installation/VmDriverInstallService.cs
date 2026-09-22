@@ -55,11 +55,11 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
                 $"VM-gated driver installation was denied: {capability.Reason}");
         }
 
-        using var servicingLock = MutationServicingLock.TryAcquire();
-        if (!servicingLock.IsAcquired)
+        using var workflowLock = MutationWorkflowLock.TryAcquire();
+        if (!workflowLock.IsAcquired)
         {
             throw new MutationDeniedException(
-                "VM-gated driver installation was denied because another Tortoise servicing operation is in progress.");
+                "VM-gated driver installation was denied because another Tortoise workflow operation is in progress.");
         }
 
         var storedPlan = await _planService.GetPlanAsync(planId, cancellationToken)

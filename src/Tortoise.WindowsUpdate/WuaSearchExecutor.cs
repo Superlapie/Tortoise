@@ -9,7 +9,7 @@ namespace Tortoise.WindowsUpdate;
 internal static class WuaUpdateMapper
 {
     internal static bool IsInstallable(IUpdate update) =>
-        update is not IUpdate3 update3 || !update3.BrowseOnly;
+        WuaBrowseOnlyPolicy.IsMutationInstallable(update);
 
     internal static WindowsUpdateCandidate Map(IUpdate update)
     {
