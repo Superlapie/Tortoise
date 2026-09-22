@@ -2,6 +2,7 @@ using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
 using Tortoise.Core.Devices;
 using Tortoise.Core.Drivers;
+using Tortoise.Core.Planning;
 using Tortoise.Core.Recommendations;
 using Tortoise.Core.Updates;
 using Tortoise.Windows.Devices;
@@ -35,6 +36,17 @@ public static class ServiceCollectionExtensions
         services.AddTortoiseWindowsUpdate();
         services.AddSingleton<IRecommendationEngine, RecommendationEngine>();
         services.AddSingleton<IRecommendationScanService, RecommendationScanService>();
+        return services;
+    }
+
+    [SupportedOSPlatform("windows")]
+    public static IServiceCollection AddTortoiseUpdatePlanning(this IServiceCollection services)
+    {
+        services.AddTortoiseRecommendations();
+        services.AddSingleton<IUpdatePlanBuilder, UpdatePlanBuilder>();
+        services.AddSingleton<IUpdatePreflightService, UpdatePreflightService>();
+        services.AddSingleton<IUpdatePlanService, UpdatePlanService>();
+        services.AddSingleton<ISimulatedUpdateTransactionService, SimulatedUpdateTransactionService>();
         return services;
     }
 }

@@ -3,6 +3,7 @@ using Tortoise.Contracts.Mutation;
 using Tortoise.Core.Devices;
 using Tortoise.Core.Diagnostics;
 using Tortoise.Core.Drivers;
+using Tortoise.Core.Planning;
 using Tortoise.Core.Recommendations;
 using Tortoise.Core.ScanSessions;
 using Tortoise.Core.Updates;
@@ -24,6 +25,9 @@ return command switch
     "updates" => await RunUpdatesScanAsync(args),
     "recommend" or "recommendations" => await RunRecommendationsAsync(args),
     "export-report" => await RunExportReportAsync(args),
+    "plan" or "plans" => await RunPlansAsync(args),
+    "preflight" => await RunPreflightAsync(args),
+    "simulate" => await RunSimulateAsync(args),
     "status" => RunStatus(),
     _ => PrintUnknown(command),
 };
@@ -39,6 +43,10 @@ static int PrintUsage()
     Console.WriteLine("  tortoise updates [--optional]");
     Console.WriteLine("  tortoise recommend [--optional]");
     Console.WriteLine("  tortoise export-report <path> [--session-id=N] [--db=path]");
+    Console.WriteLine("  tortoise plan [--session-id=N] [--device=id] [--optional] [--db=path]");
+    Console.WriteLine("  tortoise plans [--session-id=N] [--db=path]");
+    Console.WriteLine("  tortoise preflight <plan-id> [--db=path]");
+    Console.WriteLine("  tortoise simulate <plan-id> [--db=path]");
     Console.WriteLine("  tortoise status");
     return 0;
 }
@@ -257,6 +265,189 @@ static async Task<int> RunRecommendationsAsync(string[] args)
     }
 
     return 0;
+}
+
+static async Task<int> RunPlansAsync(string[] args)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("Update planning requires Windows.");
+        return 1;
+    }
+
+    var isListOnly = string.Equals(args[0], "plans", StringComparison.OrdinalIgnoreCase);
+    var services = new ServiceCollection();
+    services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+    services.AddTortoiseUpdatePlanning();
+    var provider = services.BuildServiceProvider();
+    var scanStore = provider.GetRequiredService<IScanSessionStore>();
+    var planService = provider.GetRequiredService<IUpdatePlanService>();
+
+    await scanStore.InitializeAsync();
+
+    if (isListOnly)
+    {
+        var existing = await planService.ListPlansAsync(ParseSessionId(args));
+        if (existing.Count == 0)
+        {
+            Console.WriteLine("No update plans found.");
+            return 0;
+        }
+
+        foreach (var plan in existing)
+        {
+            PrintPlanSummary(plan);
+        }
+
+        Console.WriteLine($"Plans: {existing.Count.ToString()}");
+        return 0;
+    }
+
+    var options = new UpdatePlanningOptions(
+        IncludeOptionalUpdates: args.Contains("--optional", StringComparer.OrdinalIgnoreCase),
+        DeviceInstanceId: ParseDeviceInstanceId(args),
+        ScanSessionId: ParseSessionId(args));
+
+    var plans = options.ScanSessionId is null
+        ? await planService.CreatePlansFromLatestScanAsync(options)
+        : await planService.CreatePlansFromScanSessionAsync(options.ScanSessionId.Value, options);
+
+    if (plans.Count == 0)
+    {
+        Console.WriteLine("No actionable update plans were created.");
+        return 0;
+    }
+
+    foreach (var plan in plans)
+    {
+        PrintPlanSummary(plan);
+    }
+
+    Console.WriteLine($"Plans created: {plans.Count.ToString()}");
+    return 0;
+}
+
+static async Task<int> RunPreflightAsync(string[] args)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("Preflight requires Windows.");
+        return 1;
+    }
+
+    if (args.Length < 2 || !Guid.TryParse(args[1], out var planId))
+    {
+        Console.Error.WriteLine("Usage: tortoise preflight <plan-id> [--db=path]");
+        return 1;
+    }
+
+    var services = new ServiceCollection();
+    services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+    services.AddTortoiseUpdatePlanning();
+    var provider = services.BuildServiceProvider();
+    var planService = provider.GetRequiredService<IUpdatePlanService>();
+    var preflightService = provider.GetRequiredService<IUpdatePreflightService>();
+    var deviceProvider = provider.GetRequiredService<IDeviceInventoryProvider>();
+
+    var storedPlan = await planService.GetPlanAsync(planId);
+    if (storedPlan is null)
+    {
+        Console.Error.WriteLine($"Plan '{planId}' was not found.");
+        return 1;
+    }
+
+    var inventory = await deviceProvider.ScanAsync();
+    var currentDevice = inventory.Devices.SingleOrDefault(device =>
+        string.Equals(
+            device.Snapshot.Identity.DeviceInstanceId,
+            storedPlan.Plan.DeviceSnapshot.Identity.DeviceInstanceId,
+            StringComparison.OrdinalIgnoreCase));
+
+    if (currentDevice is null)
+    {
+        Console.Error.WriteLine("Target device is no longer present in the current inventory.");
+        return 1;
+    }
+
+    var preflight = preflightService.RunPreflight(
+        storedPlan,
+        currentDevice,
+        MutationCapability.ReadOnly);
+
+    Console.WriteLine($"Plan: {storedPlan.PlanId}");
+    Console.WriteLine($"Blocked: {preflight.IsBlocked}");
+    Console.WriteLine();
+
+    foreach (var check in preflight.Checks)
+    {
+        Console.WriteLine($"{check.Name}: {check.Result}");
+        Console.WriteLine($"  {check.Message}");
+    }
+
+    return preflight.IsBlocked ? 2 : 0;
+}
+
+static async Task<int> RunSimulateAsync(string[] args)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("Simulation requires Windows.");
+        return 1;
+    }
+
+    if (args.Length < 2 || !Guid.TryParse(args[1], out var planId))
+    {
+        Console.Error.WriteLine("Usage: tortoise simulate <plan-id> [--db=path]");
+        return 1;
+    }
+
+    var services = new ServiceCollection();
+    services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+    services.AddTortoiseUpdatePlanning();
+    var provider = services.BuildServiceProvider();
+    var simulator = provider.GetRequiredService<ISimulatedUpdateTransactionService>();
+    var scanStore = provider.GetRequiredService<IScanSessionStore>();
+    await scanStore.InitializeAsync();
+
+    var result = await simulator.SimulateAsync(planId, MutationCapability.ReadOnly);
+
+    Console.WriteLine(result.Summary);
+    Console.WriteLine($"Transaction: {result.Transaction.Transaction.TransactionId}");
+    Console.WriteLine($"State: {result.Transaction.Transaction.State}");
+    Console.WriteLine();
+
+    foreach (var entry in result.Transaction.Journal)
+    {
+        Console.WriteLine($"{entry.FromState} -> {entry.ToState}: {entry.Message}");
+    }
+
+    return result.ReachedAwaitingConsent ? 0 : 2;
+}
+
+static void PrintPlanSummary(StoredUpdatePlan plan)
+{
+    Console.WriteLine(plan.PlanId.ToString());
+    Console.WriteLine($"  Device: {plan.Plan.DeviceSnapshot.Identity.FriendlyName}");
+    Console.WriteLine($"  Instance ID: {plan.Plan.DeviceSnapshot.Identity.DeviceInstanceId}");
+    Console.WriteLine($"  Classification: {plan.Classification}");
+    Console.WriteLine($"  Risk: {plan.RiskLevel}");
+    Console.WriteLine($"  Frozen: {plan.IsFrozen}");
+    Console.WriteLine($"  Proposed: {plan.Plan.ProposedUpdate.Candidate.Package.Identity.PublishedInfName}");
+    Console.WriteLine($"  Plan hash: {plan.Plan.PlanHash}");
+    Console.WriteLine();
+}
+
+static string? ParseDeviceInstanceId(string[] args)
+{
+    foreach (var arg in args)
+    {
+        if (arg.StartsWith("--device=", StringComparison.OrdinalIgnoreCase))
+        {
+            return arg["--device=".Length..];
+        }
+    }
+
+    return null;
 }
 
 static async Task<int> RunExportReportAsync(string[] args)

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Batch 8 frozen update plans, staleness checks, preflight skeleton, and simulated transactions without mutation
+- CLI commands: `tortoise plan`, `tortoise plans`, `tortoise preflight`, and `tortoise simulate`
 - Batch 7 SQLite persistence with explicit migrations and scan session storage under `%ProgramData%\\Tortoise\\`
 - Redacted JSON diagnostics export via `tortoise export-report`
 - Batch 6 WPF UI with Overview, Devices, Updates, Safety, History, Settings, and About pages

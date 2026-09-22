@@ -69,11 +69,11 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 - Overview, Devices, Updates, Safety, History, Settings, About
 - Accessibility, dark/light themes
 
-### Batch 7 — Persistence and scan history ✅ (current)
+### Batch 7 — Persistence and scan history ✅
 
 - SQLite migrations, scan sessions, diagnostics export
 
-### Batch 8 — Update planning
+### Batch 8 — Update planning ✅ (current)
 
 - Frozen plans, staleness, preflight skeleton
 - Fake update transactions (no mutation)
