@@ -59,12 +59,12 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 - WUA wrapper, driver-only search
 - Recommended vs optional, managed-policy handling
 
-### Batch 5 — Recommendation engine ✅ (current)
+### Batch 5 — Recommendation engine ✅
 
 - Combine installed driver, applicable update, risk class
 - Never mislabel "latest"
 
-### Batch 6 — Production-quality UI
+### Batch 6 — Production-quality UI ✅ (current)
 
 - Overview, Devices, Updates, Safety, History, Settings, About
 - Accessibility, dark/light themes

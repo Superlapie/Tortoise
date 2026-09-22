@@ -1,0 +1,27 @@
+<UserControl x:Class="Tortoise.App.Views.SafetyPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+            <TextBlock Text="Safety" FontSize="24" FontWeight="SemiBold" />
+            <TextBlock Text="Current safeguards enforced by Tortoise during read-only development."
+                       Margin="0,8,0,24"
+                       Foreground="{DynamicResource MutedForegroundBrush}"
+                       TextWrapping="Wrap" />
+            <ItemsControl ItemsSource="{Binding Items}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding Name}" />
+                            <TextBlock Grid.Column="1" Text="{Binding Value}" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

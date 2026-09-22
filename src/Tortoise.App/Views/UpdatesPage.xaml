@@ -1,0 +1,42 @@
+<UserControl x:Class="Tortoise.App.Views.UpdatesPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+            <TextBlock Text="Updates" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,16" />
+            <ItemsControl ItemsSource="{Binding Groups}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="0,0,0,24">
+                            <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
+                            <ItemsControl ItemsSource="{Binding Items}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,12"
+                                                Padding="16"
+                                                Background="{DynamicResource SurfaceBrush}"
+                                                BorderBrush="{DynamicResource BorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="8">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding DeviceName}" FontWeight="SemiBold" FontSize="16" />
+                                                <TextBlock Text="{Binding Classification}" Margin="0,4,0,0" />
+                                                <TextBlock Text="{Binding Explanation}" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{DynamicResource MutedForegroundBrush}" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                                    <TextBlock Text="{Binding CurrentVersion, StringFormat=Current: {0}}" Margin="0,0,16,0" />
+                                                    <TextBlock Text="{Binding ProposedTitle, StringFormat=Proposed: {0}}" Margin="0,0,16,0" />
+                                                    <TextBlock Text="{Binding RiskLevel, StringFormat=Risk: {0}}" Margin="0,0,16,0" />
+                                                    <TextBlock Text="{Binding Source, StringFormat=Source: {0}}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

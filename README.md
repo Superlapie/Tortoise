@@ -8,7 +8,7 @@ Tortoise is a safety-first Windows driver inventory, health, update, recovery, a
 
 ## Status
 
-**Version:** `0.1.0-alpha` (Batch 0 — repository constitution)
+**Version:** `0.1.0-alpha` (Batch 6 — production-quality UI)
 
 Current capabilities:
 
@@ -19,15 +19,16 @@ Current capabilities:
 - Driver store inventory via PnPUtil with device/package association
 - Windows Update driver scan via WUA (recommended/optional, managed-policy aware)
 - Recommendation engine combining devices, updates, and risk policy
+- WPF app with Overview, Devices, Updates, Safety, History, Settings, and About pages
+- Light/dark themes, scan coordination, and in-memory session history
 - `tortoise scan`, `tortoise devices`, `tortoise packages`, `tortoise updates`, and `tortoise recommend` CLI on Windows
 - Initial documentation and architecture decision records
 - CI scaffolding
 
 Current limitations:
 
-- No production UI pages yet
 - No driver installation (mutation permanently disabled during early development)
-- WPF UI is a placeholder shell
+- Scan history is in-memory only (SQLite persistence planned for Batch 7)
 
 ## Supported platform
 

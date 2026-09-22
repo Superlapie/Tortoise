@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Batch 6 WPF UI with Overview, Devices, Updates, Safety, History, Settings, and About pages
+- Light/dark theme switching, scan coordination, and in-memory session history
 - Batch 5 recommendation engine combining device inventory, WUA results, and risk policy
 - Conservative applicability matching that never prefers higher version numbers alone
 - `tortoise recommend [--optional]` CLI command

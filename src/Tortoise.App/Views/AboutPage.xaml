@@ -1,0 +1,11 @@
+<UserControl x:Class="Tortoise.App.Views.AboutPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel MaxWidth="640">
+        <TextBlock Text="{Binding ApplicationName}" FontSize="28" FontWeight="SemiBold" />
+        <TextBlock Text="{Binding Tagline}" Margin="0,8,0,0" Foreground="{DynamicResource MutedForegroundBrush}" />
+        <TextBlock Text="{Binding Version, StringFormat=Version {0}}" Margin="0,16,0,0" />
+        <TextBlock Text="{Binding Description}" Margin="0,16,0,0" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding SafetyNotice}" Margin="0,24,0,0" TextWrapping="Wrap" Foreground="{DynamicResource MutedForegroundBrush}" />
+    </StackPanel>
+</UserControl>

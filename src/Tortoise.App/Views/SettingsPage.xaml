@@ -1,0 +1,19 @@
+<UserControl x:Class="Tortoise.App.Views.SettingsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="640">
+            <TextBlock Text="Settings" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,16" />
+            <CheckBox Content="Use dark theme"
+                      IsChecked="{Binding UseDarkTheme}"
+                      Margin="0,0,0,12" />
+            <CheckBox Content="Include optional Windows updates in scans"
+                      IsChecked="{Binding IncludeOptionalUpdates}"
+                      Margin="0,0,0,24" />
+            <TextBlock Text="Diagnostics" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding DiagnosticsVerbosity, StringFormat=Logging level: {0}}" Margin="0,8,0,24" />
+            <TextBlock Text="Privacy" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding PrivacySummary}" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{DynamicResource MutedForegroundBrush}" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
