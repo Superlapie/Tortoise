@@ -3,6 +3,7 @@ using Tortoise.Contracts.Mutation;
 using Tortoise.Core.Devices;
 using Tortoise.Core.Diagnostics;
 using Tortoise.Core.Drivers;
+using Tortoise.Core.FaultInjection;
 using Tortoise.Core.Installation;
 using Tortoise.Core.Mutation;
 using Tortoise.Core.Planning;
@@ -38,6 +39,7 @@ return command switch
     "simulate" => await RunSimulateAsync(args),
     "workflow" => await RunWorkflowAsync(args),
     "vm" => await RunVmAsync(args),
+    "fault" => await RunFaultAsync(args),
     "recover" => await RunRecoverAsync(args),
     "broker" => await RunBrokerAsync(args),
     "status" => RunStatus(),
@@ -62,6 +64,9 @@ static int PrintUsage()
     Console.WriteLine("  tortoise workflow run <plan-id> [--skip-broker] [--session-id=N] [--pipe=name] [--db=path]");
     Console.WriteLine("  tortoise vm status");
     Console.WriteLine("  tortoise vm install <plan-id> [--skip-broker-validate] [--session-id=N] [--pipe=name] [--db=path]");
+    Console.WriteLine("  tortoise fault list");
+    Console.WriteLine("  tortoise fault run <scenario> <plan-id> [--db=path]");
+    Console.WriteLine("  tortoise fault reconcile <transaction-id> [--db=path]");
     Console.WriteLine("  tortoise recover prepare <plan-id> [--output-dir=path] [--db=path]");
     Console.WriteLine("  tortoise recover list [--plan-id=guid] [--db=path]");
     Console.WriteLine("  tortoise recover export <preparation-id> <path> [--db=path]");
@@ -546,6 +551,117 @@ static async Task<int> RunVmInstallAsync(string[] args)
         Console.Error.WriteLine(ex.Reason);
         return 2;
     }
+}
+
+static async Task<int> RunFaultAsync(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: tortoise fault <list|run|reconcile> ...");
+        return 1;
+    }
+
+    return args[1].ToLowerInvariant() switch
+    {
+        "list" => RunFaultList(),
+        "run" => await RunFaultRunAsync(args),
+        "reconcile" => await RunFaultReconcileAsync(args),
+        _ => PrintUnknown(args[1]),
+    };
+}
+
+static int RunFaultList()
+{
+    Console.WriteLine("Fault injection scenarios (require TORTOISE_FAULT_INJECTION=1):");
+    Console.WriteLine();
+
+    foreach (var definition in FaultInjectionScenarioCatalog.All)
+    {
+        Console.WriteLine(definition.Scenario);
+        Console.WriteLine($"  {definition.Title}");
+        Console.WriteLine($"  Checkpoint: {definition.Checkpoint}");
+        Console.WriteLine($"  {definition.Description}");
+        Console.WriteLine();
+    }
+
+    return 0;
+}
+
+static async Task<int> RunFaultRunAsync(string[] args)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("Fault injection requires Windows.");
+        return 1;
+    }
+
+    if (args.Length < 4 || !Guid.TryParse(args[3], out var planId))
+    {
+        Console.Error.WriteLine("Usage: tortoise fault run <scenario> <plan-id> [--db=path]");
+        return 1;
+    }
+
+    if (!FaultInjectionScenarioCatalog.TryParse(args[2], out var scenario))
+    {
+        Console.Error.WriteLine($"Unknown fault scenario: {args[2]}");
+        RunFaultList();
+        return 1;
+    }
+
+    if (!FaultInjectionGate.IsEnabled())
+    {
+        Console.Error.WriteLine("Fault injection is disabled. Set TORTOISE_FAULT_INJECTION=1 first.");
+        return 2;
+    }
+
+    var services = new ServiceCollection();
+    services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+    services.AddTortoiseFaultInjection();
+    var provider = services.BuildServiceProvider();
+    var scanStore = provider.GetRequiredService<IScanSessionStore>();
+    var workflow = provider.GetRequiredService<IFaultInjectionWorkflowService>();
+    await scanStore.InitializeAsync();
+
+    var result = await workflow.RunScenarioAsync(planId, scenario);
+
+    Console.WriteLine(result.Summary);
+    Console.WriteLine($"Transaction: {result.Transaction.Transaction.TransactionId}");
+    Console.WriteLine($"State: {result.Transaction.Transaction.State}");
+    Console.WriteLine($"Scenario: {result.InjectedFault.Scenario}");
+    Console.WriteLine($"Requires recovery: {result.InjectedFault.RequiresRecovery}");
+    Console.WriteLine($"Guidance: {result.InjectedFault.RecoveryGuidance}");
+    Console.WriteLine();
+    Console.WriteLine("Reconcile with:");
+    Console.WriteLine($"  tortoise fault reconcile {result.Transaction.Transaction.TransactionId}");
+
+    return 0;
+}
+
+static async Task<int> RunFaultReconcileAsync(string[] args)
+{
+    if (args.Length < 3 || !Guid.TryParse(args[2], out var transactionId))
+    {
+        Console.Error.WriteLine("Usage: tortoise fault reconcile <transaction-id> [--db=path]");
+        return 1;
+    }
+
+    var services = new ServiceCollection();
+    services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+    services.AddTortoiseFaultInjection();
+    var provider = services.BuildServiceProvider();
+    var reconciliation = provider.GetRequiredService<IFaultReconciliationService>();
+
+    var result = await reconciliation.ReconcileAsync(transactionId);
+
+    Console.WriteLine(result.Summary);
+    Console.WriteLine($"Transaction: {result.TransactionId}");
+    Console.WriteLine($"Plan: {result.PlanId}");
+    Console.WriteLine($"Last state: {result.LastState}");
+    Console.WriteLine($"Injected scenario: {result.InjectedScenario?.ToString() ?? "none"}");
+    Console.WriteLine($"Recommended action: {result.RecommendedAction}");
+    Console.WriteLine($"Guidance: {result.Guidance}");
+
+    return 0;
 }
 
 static async Task<int> RunWorkflowAsync(string[] args)

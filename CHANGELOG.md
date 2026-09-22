@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Batch 13 fault injection scenarios (process crash, unexpected reboot, network failure, candidate disappearance) with reconciliation
+- Environment marker `TORTOISE_FAULT_INJECTION=1` and CLI commands `tortoise fault list`, `tortoise fault run`, and `tortoise fault reconcile`
 - Batch 12 VM-gated Windows Update driver install for one low-risk plan via broker `InstallDriver` and WUA
 - Environment markers `TORTOISE_MUTATION_TESTS`, `TORTOISE_ALLOW_VM_INSTALL`, and optional `TORTOISE_VM_MARKER`
 - CLI commands: `tortoise vm status` and `tortoise vm install <plan-id>`

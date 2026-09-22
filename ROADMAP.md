@@ -93,16 +93,18 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 - Optional broker plan validation before simulated download
 - CLI `tortoise workflow run`
 
-### Batch 12 — Disposable VM installation ✅ (current)
+### Batch 12 — Disposable VM installation ✅
 
 - VM-gated real WUA install path for one low-risk Windows-recommended update
 - Environment markers: `TORTOISE_MUTATION_TESTS=1`, `TORTOISE_ALLOW_VM_INSTALL=1`, plus VM detection
 - Broker `InstallDriver` enabled only in disposable VM mode
 - CLI `tortoise vm install` and `tortoise vm status`
 
-### Batch 13 — Fault injection
+### Batch 13 — Fault injection ✅ (current)
 
-- Crash/reboot/network/candidate disappearance scenarios
+- Simulated crash, reboot, network, and candidate disappearance scenarios
+- Durable transaction journal markers and reconciliation guidance
+- CLI `tortoise fault run` and `tortoise fault reconcile`
 
 ### Batch 14 — Physical pilot readiness
 

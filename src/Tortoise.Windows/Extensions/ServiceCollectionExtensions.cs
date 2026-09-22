@@ -2,6 +2,7 @@ using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
 using Tortoise.Core.Devices;
 using Tortoise.Core.Drivers;
+using Tortoise.Core.FaultInjection;
 using Tortoise.Core.Installation;
 using Tortoise.Core.Mutation;
 using Tortoise.Core.Planning;
@@ -72,6 +73,15 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IExecutionEnvironmentDetector, WindowsExecutionEnvironmentDetector>();
         services.AddSingleton<IRealPostInstallVerificationService, RealPostInstallVerificationService>();
         services.AddSingleton<IVmDriverInstallService, VmDriverInstallService>();
+        return services;
+    }
+
+    [SupportedOSPlatform("windows")]
+    public static IServiceCollection AddTortoiseFaultInjection(this IServiceCollection services)
+    {
+        services.AddTortoiseSimulatedMutationWorkflow();
+        services.AddSingleton<IFaultInjectionWorkflowService, FaultInjectionWorkflowService>();
+        services.AddSingleton<IFaultReconciliationService, FaultReconciliationService>();
         return services;
     }
 

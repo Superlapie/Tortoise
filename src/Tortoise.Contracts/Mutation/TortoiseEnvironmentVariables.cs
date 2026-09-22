@@ -8,6 +8,8 @@ public static class TortoiseEnvironmentVariables
 
     public const string VmMarker = "TORTOISE_VM_MARKER";
 
+    public const string FaultInjection = "TORTOISE_FAULT_INJECTION";
+
     public static bool IsTruthy(string? value) =>
         value is "1" or "true" or "TRUE" or "yes" or "YES";
 }

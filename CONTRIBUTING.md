@@ -42,6 +42,8 @@ TORTOISE_VM_MARKER=1
 
 All three conditions (disposable VM detection or marker, mutation tests, VM install opt-in) must be satisfied before real driver installation is enabled.
 
+Fault injection scenarios require `TORTOISE_FAULT_INJECTION=1` and never mutate real drivers — they simulate interrupted workflows for resilience testing.
+
 ## Commits
 
 Use clear, focused commits. Do not bundle unrelated changes.
