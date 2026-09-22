@@ -8,7 +8,10 @@ using Tortoise.Core.Recovery;
 using Tortoise.Core.Recommendations;
 using Tortoise.Core.ScanSessions;
 using Tortoise.Core.Updates;
+using Tortoise.Contracts.Elevation;
 using Tortoise.Persistence.Extensions;
+using Tortoise.Security.Broker;
+using Tortoise.Broker.Ipc;
 using Tortoise.Windows.Extensions;
 using Tortoise.WindowsUpdate.Extensions;
 
@@ -30,6 +33,7 @@ return command switch
     "preflight" => await RunPreflightAsync(args),
     "simulate" => await RunSimulateAsync(args),
     "recover" => await RunRecoverAsync(args),
+    "broker" => await RunBrokerAsync(args),
     "status" => RunStatus(),
     _ => PrintUnknown(command),
 };
@@ -52,6 +56,9 @@ static int PrintUsage()
     Console.WriteLine("  tortoise recover prepare <plan-id> [--output-dir=path] [--db=path]");
     Console.WriteLine("  tortoise recover list [--plan-id=guid] [--db=path]");
     Console.WriteLine("  tortoise recover export <preparation-id> <path> [--db=path]");
+    Console.WriteLine("  tortoise broker ping [--session-id=N] [--pipe=name]");
+    Console.WriteLine("  tortoise broker status [--session-id=N] [--pipe=name]");
+    Console.WriteLine("  tortoise broker serve [--session-id=N] [--pipe=name]");
     Console.WriteLine("  tortoise status");
     return 0;
 }
@@ -620,6 +627,121 @@ static async Task<int> RunExportReportAsync(string[] args)
     }
 
     return 0;
+}
+
+static async Task<int> RunBrokerAsync(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: tortoise broker <ping|status|serve> [--session-id=N] [--pipe=name]");
+        return 1;
+    }
+
+    return args[1].ToLowerInvariant() switch
+    {
+        "ping" => await RunBrokerPingAsync(args),
+        "status" => await RunBrokerStatusAsync(args),
+        "serve" => await RunBrokerServeAsync(args),
+        _ => PrintUnknown(args[1]),
+    };
+}
+
+static async Task<int> RunBrokerPingAsync(string[] args)
+{
+    var options = CreateBrokerHostOptions(args);
+    var client = new BrokerPipeClient();
+
+    await StartBrokerServerIfNeededAsync(options);
+    var response = await client.SendAsync(
+        options,
+        BrokerRequestFactory.Create(BrokerOperation.Ping, options.SessionId));
+
+    Console.WriteLine(response.Message);
+    return response.Succeeded ? 0 : 2;
+}
+
+static async Task<int> RunBrokerStatusAsync(string[] args)
+{
+    var options = CreateBrokerHostOptions(args);
+    var client = new BrokerPipeClient();
+
+    await StartBrokerServerIfNeededAsync(options);
+    var response = await client.SendAsync(
+        options,
+        BrokerRequestFactory.Create(BrokerOperation.GetStatus, options.SessionId));
+
+    Console.WriteLine(response.Message);
+    if (!string.IsNullOrWhiteSpace(response.PayloadJson))
+    {
+        Console.WriteLine(response.PayloadJson);
+    }
+
+    return response.Succeeded ? 0 : 2;
+}
+
+static async Task<int> RunBrokerServeAsync(string[] args)
+{
+    var options = CreateBrokerHostOptions(args);
+    Console.WriteLine($"Broker listening on pipe '{options.PipeName ?? ElevationConstants.GetPipeName(options.SessionId)}' for session {options.SessionId.ToString()}");
+    await BrokerHost.RunOnceAsync(options);
+    Console.WriteLine("Broker request handled. Exiting.");
+    return 0;
+}
+
+static BrokerHostOptions CreateBrokerHostOptions(string[] args)
+{
+    var sessionId = ParseBrokerSessionId(args) ?? Environment.ProcessId;
+    return new BrokerHostOptions
+    {
+        SessionId = sessionId,
+        PipeName = ParseBrokerPipeName(args),
+    };
+}
+
+static int? ParseBrokerSessionId(string[] args)
+{
+    foreach (var arg in args)
+    {
+        if (arg.StartsWith("--session-id=", StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(arg["--session-id=".Length..], out var sessionId))
+        {
+            return sessionId;
+        }
+    }
+
+    return null;
+}
+
+static string? ParseBrokerPipeName(string[] args)
+{
+    foreach (var arg in args)
+    {
+        if (arg.StartsWith("--pipe=", StringComparison.OrdinalIgnoreCase))
+        {
+            return arg["--pipe=".Length..];
+        }
+    }
+
+    return null;
+}
+
+static async Task StartBrokerServerIfNeededAsync(BrokerHostOptions options)
+{
+    var client = new BrokerPipeClient();
+    try
+    {
+        _ = await client.SendAsync(
+            options with { ConnectTimeoutMs = 250 },
+            BrokerRequestFactory.Create(BrokerOperation.Ping, options.SessionId));
+        return;
+    }
+    catch
+    {
+        // Broker is not already running; start a one-shot server in the background.
+    }
+
+    _ = Task.Run(() => BrokerHost.RunOnceAsync(options));
+    await Task.Delay(150);
 }
 
 static long? ParseSessionId(string[] args)

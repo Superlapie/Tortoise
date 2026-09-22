@@ -78,11 +78,11 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 - Frozen plans, staleness, preflight skeleton
 - Fake update transactions (no mutation)
 
-### Batch 9 — Recovery preparation ✅ (current)
+### Batch 9 — Recovery preparation ✅
 
 - Before snapshots, export abstraction, recovery manifest
 
-### Batch 10 — Broker
+### Batch 10 — Broker ✅ (current)
 
 - One-shot elevated broker, named pipe IPC, replay protection
 - No driver install enabled yet

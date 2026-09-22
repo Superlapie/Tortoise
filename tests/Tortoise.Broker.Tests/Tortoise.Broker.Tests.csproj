@@ -15,6 +15,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Tortoise.Broker\Tortoise.Broker.csproj" />
+    <ProjectReference Include="..\..\src\Tortoise.Contracts\Tortoise.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Tortoise.Security\Tortoise.Security.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 

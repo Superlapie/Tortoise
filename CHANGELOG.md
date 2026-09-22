@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Batch 10 one-shot broker with named pipe IPC, nonce replay protection, and allowlisted operations (no driver install)
+- CLI commands: `tortoise broker ping`, `tortoise broker status`, and `tortoise broker serve`
 - Batch 9 recovery preparation with before snapshots, export abstraction, and recovery manifest export
 - CLI commands: `tortoise recover prepare`, `tortoise recover list`, and `tortoise recover export`
 - Batch 8 frozen update plans, staleness checks, preflight skeleton, and simulated transactions without mutation
