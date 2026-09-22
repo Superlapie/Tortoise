@@ -11,6 +11,15 @@ public sealed class MutationCapability : IMutationCapability
         environment: MutationEnvironment.ReadOnly,
         reason: "Mutation is globally disabled during early development.");
 
+    /// <summary>
+    /// Simulated workflow preset. Mutation remains disabled; the environment marks
+    /// end-to-end simulation paths that never touch real driver APIs.
+    /// </summary>
+    public static MutationCapability Simulated { get; } = new(
+        isEnabled: false,
+        environment: MutationEnvironment.Simulated,
+        reason: "Simulated workflow only; no driver mutation is performed.");
+
     public MutationCapability(bool isEnabled, MutationEnvironment environment, string reason)
     {
         IsEnabled = isEnabled;

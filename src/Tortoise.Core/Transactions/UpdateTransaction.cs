@@ -50,7 +50,7 @@ public static class UpdateTransactionTransitions
             [UpdateTransactionState.PreflightRunning] =
                 [UpdateTransactionState.PreflightPassed, UpdateTransactionState.PreflightFailed],
             [UpdateTransactionState.PreflightPassed] =
-                [UpdateTransactionState.Downloading, UpdateTransactionState.AwaitingConsent],
+                [UpdateTransactionState.Downloading, UpdateTransactionState.AwaitingConsent, UpdateTransactionState.Failed],
             [UpdateTransactionState.PreflightFailed] = [UpdateTransactionState.Failed, UpdateTransactionState.Cancelled],
             [UpdateTransactionState.Downloading] =
                 [UpdateTransactionState.Downloaded, UpdateTransactionState.Failed, UpdateTransactionState.Cancelled],

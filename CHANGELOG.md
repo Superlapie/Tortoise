@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Batch 11 end-to-end simulated mutation workflow with package verification, post-install verification, and optional broker plan validation
+- CLI command: `tortoise workflow run <plan-id> [--skip-broker] [--session-id=N] [--pipe=name]`
+- `MutationCapability.Simulated` preset for simulation-only paths (mutation remains disabled)
 - Batch 10 one-shot broker with named pipe IPC, nonce replay protection, and allowlisted operations (no driver install)
 - CLI commands: `tortoise broker ping`, `tortoise broker status`, and `tortoise broker serve`
 - Batch 9 recovery preparation with before snapshots, export abstraction, and recovery manifest export

@@ -48,7 +48,17 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IUpdatePlanBuilder, UpdatePlanBuilder>();
         services.AddSingleton<IUpdatePreflightService, UpdatePreflightService>();
         services.AddSingleton<IUpdatePlanService, UpdatePlanService>();
+        services.AddSingleton<ISimulatedUpdatePackageVerificationService, SimulatedUpdatePackageVerificationService>();
+        services.AddSingleton<ISimulatedPostInstallVerificationService, SimulatedPostInstallVerificationService>();
         services.AddSingleton<ISimulatedUpdateTransactionService, SimulatedUpdateTransactionService>();
+        return services;
+    }
+
+    [SupportedOSPlatform("windows")]
+    public static IServiceCollection AddTortoiseSimulatedMutationWorkflow(this IServiceCollection services)
+    {
+        services.AddTortoiseUpdatePlanning();
+        services.AddSingleton<ISimulatedMutationWorkflowService, SimulatedMutationWorkflowService>();
         return services;
     }
 

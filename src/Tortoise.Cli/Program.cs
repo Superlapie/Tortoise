@@ -11,6 +11,7 @@ using Tortoise.Core.Updates;
 using Tortoise.Contracts.Elevation;
 using Tortoise.Persistence.Extensions;
 using Tortoise.Security.Broker;
+using Tortoise.Broker.Extensions;
 using Tortoise.Broker.Ipc;
 using Tortoise.Windows.Extensions;
 using Tortoise.WindowsUpdate.Extensions;
@@ -32,6 +33,7 @@ return command switch
     "plan" or "plans" => await RunPlansAsync(args),
     "preflight" => await RunPreflightAsync(args),
     "simulate" => await RunSimulateAsync(args),
+    "workflow" => await RunWorkflowAsync(args),
     "recover" => await RunRecoverAsync(args),
     "broker" => await RunBrokerAsync(args),
     "status" => RunStatus(),
@@ -53,6 +55,7 @@ static int PrintUsage()
     Console.WriteLine("  tortoise plans [--session-id=N] [--db=path]");
     Console.WriteLine("  tortoise preflight <plan-id> [--db=path]");
     Console.WriteLine("  tortoise simulate <plan-id> [--db=path]");
+    Console.WriteLine("  tortoise workflow run <plan-id> [--skip-broker] [--session-id=N] [--pipe=name] [--db=path]");
     Console.WriteLine("  tortoise recover prepare <plan-id> [--output-dir=path] [--db=path]");
     Console.WriteLine("  tortoise recover list [--plan-id=guid] [--db=path]");
     Console.WriteLine("  tortoise recover export <preparation-id> <path> [--db=path]");
@@ -434,6 +437,74 @@ static async Task<int> RunSimulateAsync(string[] args)
     }
 
     return result.ReachedAwaitingConsent ? 0 : 2;
+}
+
+static async Task<int> RunWorkflowAsync(string[] args)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("Simulated mutation workflow requires Windows.");
+        return 1;
+    }
+
+    if (args.Length < 3
+        || !string.Equals(args[1], "run", StringComparison.OrdinalIgnoreCase)
+        || !Guid.TryParse(args[2], out var planId))
+    {
+        Console.Error.WriteLine("Usage: tortoise workflow run <plan-id> [--skip-broker] [--session-id=N] [--pipe=name] [--db=path]");
+        return 1;
+    }
+
+    var skipBroker = args.Contains("--skip-broker", StringComparer.OrdinalIgnoreCase);
+    var services = new ServiceCollection();
+    services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+    services.AddTortoiseSimulatedMutationWorkflow();
+    if (!skipBroker)
+    {
+        services.AddTortoiseBrokerPlanValidation();
+    }
+
+    var provider = services.BuildServiceProvider();
+    var scanStore = provider.GetRequiredService<IScanSessionStore>();
+    var workflow = provider.GetRequiredService<ISimulatedMutationWorkflowService>();
+    await scanStore.InitializeAsync();
+
+    BrokerPlanValidationOptions? brokerOptions = null;
+    if (!skipBroker)
+    {
+        var brokerHostOptions = CreateBrokerHostOptions(args);
+        await StartBrokerServerIfNeededAsync(brokerHostOptions);
+        brokerOptions = new BrokerPlanValidationOptions(
+            brokerHostOptions.SessionId,
+            brokerHostOptions.PipeName,
+            brokerHostOptions.ConnectTimeoutMs);
+    }
+
+    var result = await workflow.RunAsync(
+        planId,
+        new SimulatedMutationWorkflowOptions(
+            RequireBrokerValidation: !skipBroker,
+            BrokerOptions: brokerOptions));
+
+    Console.WriteLine(result.Summary);
+    Console.WriteLine($"Transaction: {result.Transaction.Transaction.TransactionId}");
+    Console.WriteLine($"State: {result.Transaction.Transaction.State}");
+    Console.WriteLine($"Package verification: {result.PackageVerification.Result}");
+    Console.WriteLine($"Post-install verification: {result.PostInstallVerification.Result}");
+
+    if (result.BrokerValidation is not null)
+    {
+        Console.WriteLine($"Broker validation: {(result.BrokerValidation.Succeeded ? "Succeeded" : "Failed")}");
+        Console.WriteLine($"  {result.BrokerValidation.Message}");
+    }
+
+    Console.WriteLine();
+    foreach (var entry in result.Transaction.Journal)
+    {
+        Console.WriteLine($"{entry.FromState} -> {entry.ToState}: {entry.Message}");
+    }
+
+    return result.CompletedSuccessfully ? 0 : 2;
 }
 
 static void PrintPlanSummary(StoredUpdatePlan plan)

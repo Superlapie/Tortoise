@@ -219,9 +219,8 @@ public sealed class SimulatedUpdateTransactionServiceTests
         var device = CreateDevice(new Version(1, 0));
         var planStore = new FakeUpdatePlanStore(storedPlan);
         var transactionStore = new FakeUpdateTransactionStore();
-        var service = new SimulatedUpdateTransactionService(
+        var service = CreateSimulatedTransactionService(
             new FakeUpdatePlanService(planStore),
-            new UpdatePreflightService(),
             transactionStore,
             new FakeDeviceInventoryProvider(device));
 
@@ -235,7 +234,7 @@ public sealed class SimulatedUpdateTransactionServiceTests
             entry => entry.ToState == UpdateTransactionState.AwaitingConsent);
     }
 
-    private static StoredUpdatePlan CreateStoredPlan()
+    internal static StoredUpdatePlan CreateStoredPlan()
     {
         var recommendation = new DeviceUpdateRecommendation(
             CreateDevice(new Version(1, 0)),
@@ -264,7 +263,7 @@ public sealed class SimulatedUpdateTransactionServiceTests
         return UpdatePlanBuilder.CreateStoredPlan(recommendation, scanSessionId: 1);
     }
 
-    private static DeviceInventoryEntry CreateDevice(Version installedVersion)
+    internal static DeviceInventoryEntry CreateDevice(Version installedVersion)
     {
         return new DeviceInventoryEntry(
             new DeviceSnapshot(
@@ -287,7 +286,21 @@ public sealed class SimulatedUpdateTransactionServiceTests
             new DeviceDriverBinding("Intel", installedVersion, null, "intel.inf"));
     }
 
-    private sealed class FakeUpdatePlanStore : IUpdatePlanStore
+    internal static SimulatedUpdateTransactionService CreateSimulatedTransactionService(
+        IUpdatePlanService planService,
+        IUpdateTransactionStore transactionStore,
+        IDeviceInventoryProvider deviceInventoryProvider,
+        IBrokerPlanValidationClient? brokerPlanValidationClient = null) =>
+        new(
+            planService,
+            new UpdatePreflightService(),
+            transactionStore,
+            deviceInventoryProvider,
+            new SimulatedUpdatePackageVerificationService(),
+            new SimulatedPostInstallVerificationService(),
+            brokerPlanValidationClient);
+
+    internal sealed class FakeUpdatePlanStore : IUpdatePlanStore
     {
         private readonly StoredUpdatePlan _plan;
 
@@ -305,7 +318,7 @@ public sealed class SimulatedUpdateTransactionServiceTests
             Task.FromResult<IReadOnlyList<StoredUpdatePlan>>([_plan]);
     }
 
-    private sealed class FakeUpdatePlanService : IUpdatePlanService
+    internal sealed class FakeUpdatePlanService : IUpdatePlanService
     {
         private readonly FakeUpdatePlanStore _store;
 
@@ -336,7 +349,7 @@ public sealed class SimulatedUpdateTransactionServiceTests
             throw new NotSupportedException();
     }
 
-    private sealed class FakeUpdateTransactionStore : IUpdateTransactionStore
+    internal sealed class FakeUpdateTransactionStore : IUpdateTransactionStore
     {
         public Task<UpdateTransactionRecord> SaveAsync(
             UpdateTransactionRecord transaction,
@@ -354,7 +367,7 @@ public sealed class SimulatedUpdateTransactionServiceTests
             Task.FromResult<UpdateTransactionRecord?>(null);
     }
 
-    private sealed class FakeDeviceInventoryProvider : IDeviceInventoryProvider
+    internal sealed class FakeDeviceInventoryProvider : IDeviceInventoryProvider
     {
         private readonly DeviceInventoryEntry _device;
 
@@ -362,5 +375,116 @@ public sealed class SimulatedUpdateTransactionServiceTests
 
         public Task<DeviceInventoryScanResult> ScanAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new DeviceInventoryScanResult([_device], [], DateTimeOffset.UtcNow));
+    }
+}
+
+public sealed class SimulatedFullWorkflowTests
+{
+    [Fact]
+    public async Task SimulateFullWorkflowAsync_completes_without_mutation()
+    {
+        var storedPlan = SimulatedUpdateTransactionServiceTests.CreateStoredPlan();
+        var device = SimulatedUpdateTransactionServiceTests.CreateDevice(new Version(1, 0));
+        var planStore = new SimulatedUpdateTransactionServiceTests.FakeUpdatePlanStore(storedPlan);
+        var transactionStore = new SimulatedUpdateTransactionServiceTests.FakeUpdateTransactionStore();
+        var service = SimulatedUpdateTransactionServiceTests.CreateSimulatedTransactionService(
+            new SimulatedUpdateTransactionServiceTests.FakeUpdatePlanService(planStore),
+            transactionStore,
+            new SimulatedUpdateTransactionServiceTests.FakeDeviceInventoryProvider(device));
+
+        var result = await service.SimulateFullWorkflowAsync(
+            storedPlan.PlanId,
+            MutationCapability.Simulated);
+
+        Assert.True(result.CompletedSuccessfully);
+        Assert.Equal(UpdateTransactionState.Completed, result.Transaction.Transaction.State);
+        Assert.Equal(UpdateVerificationResult.Verified, result.PackageVerification.Result);
+        Assert.Equal(UpdateVerificationResult.Verified, result.PostInstallVerification.Result);
+        Assert.Contains(
+            result.Transaction.Journal,
+            entry => entry.ToState == UpdateTransactionState.Verified);
+        Assert.Contains(
+            result.Transaction.Journal,
+            entry => entry.ToState == UpdateTransactionState.Completed);
+    }
+
+    [Fact]
+    public async Task SimulateFullWorkflowAsync_stops_when_broker_validation_fails()
+    {
+        var storedPlan = SimulatedUpdateTransactionServiceTests.CreateStoredPlan();
+        var device = SimulatedUpdateTransactionServiceTests.CreateDevice(new Version(1, 0));
+        var planStore = new SimulatedUpdateTransactionServiceTests.FakeUpdatePlanStore(storedPlan);
+        var transactionStore = new SimulatedUpdateTransactionServiceTests.FakeUpdateTransactionStore();
+        var brokerClient = new FakeBrokerPlanValidationClient(
+            new BrokerPlanValidationResult(false, "Broker rejected plan.", "PlanValidationFailed"));
+        var service = SimulatedUpdateTransactionServiceTests.CreateSimulatedTransactionService(
+            new SimulatedUpdateTransactionServiceTests.FakeUpdatePlanService(planStore),
+            transactionStore,
+            new SimulatedUpdateTransactionServiceTests.FakeDeviceInventoryProvider(device),
+            brokerClient);
+
+        var result = await service.SimulateFullWorkflowAsync(
+            storedPlan.PlanId,
+            MutationCapability.Simulated,
+            new SimulatedWorkflowExecutionOptions(
+                RequireBrokerValidation: true,
+                BrokerOptions: new BrokerPlanValidationOptions(SessionId: 42)));
+
+        Assert.False(result.CompletedSuccessfully);
+        Assert.Equal(UpdateTransactionState.Failed, result.Transaction.Transaction.State);
+        Assert.NotNull(result.BrokerValidation);
+        Assert.False(result.BrokerValidation!.Succeeded);
+    }
+
+    private sealed class FakeBrokerPlanValidationClient : IBrokerPlanValidationClient
+    {
+        private readonly BrokerPlanValidationResult _result;
+
+        public FakeBrokerPlanValidationClient(BrokerPlanValidationResult result) => _result = result;
+
+        public Task<BrokerPlanValidationResult> ValidatePlanAsync(
+            Guid planId,
+            string planHash,
+            BrokerPlanValidationOptions options,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(_result);
+    }
+}
+
+public sealed class SimulatedPackageVerificationTests
+{
+    [Fact]
+    public void VerifyPackage_passes_for_valid_frozen_plan()
+    {
+        var storedPlan = SimulatedUpdateTransactionServiceTests.CreateStoredPlan();
+        var service = new SimulatedUpdatePackageVerificationService();
+
+        var verification = service.VerifyPackage(storedPlan, Guid.NewGuid());
+
+        Assert.Equal(UpdateVerificationResult.Verified, verification.Result);
+    }
+}
+
+public sealed class SimulatedMutationWorkflowServiceTests
+{
+    [Fact]
+    public async Task RunAsync_delegates_to_full_workflow()
+    {
+        var storedPlan = SimulatedUpdateTransactionServiceTests.CreateStoredPlan();
+        var device = SimulatedUpdateTransactionServiceTests.CreateDevice(new Version(1, 0));
+        var planStore = new SimulatedUpdateTransactionServiceTests.FakeUpdatePlanStore(storedPlan);
+        var transactionStore = new SimulatedUpdateTransactionServiceTests.FakeUpdateTransactionStore();
+        var transactionService = SimulatedUpdateTransactionServiceTests.CreateSimulatedTransactionService(
+            new SimulatedUpdateTransactionServiceTests.FakeUpdatePlanService(planStore),
+            transactionStore,
+            new SimulatedUpdateTransactionServiceTests.FakeDeviceInventoryProvider(device));
+        var workflow = new SimulatedMutationWorkflowService(transactionService);
+
+        var result = await workflow.RunAsync(
+            storedPlan.PlanId,
+            new SimulatedMutationWorkflowOptions());
+
+        Assert.True(result.CompletedSuccessfully);
+        Assert.Equal(UpdateTransactionState.Completed, result.Transaction.Transaction.State);
     }
 }

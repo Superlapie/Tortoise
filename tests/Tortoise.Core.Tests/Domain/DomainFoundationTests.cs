@@ -13,6 +13,7 @@ public sealed class UpdateTransactionTransitionTests
     [InlineData(UpdateTransactionState.Discovered, UpdateTransactionState.Eligible, true)]
     [InlineData(UpdateTransactionState.PreflightPassed, UpdateTransactionState.Downloading, true)]
     [InlineData(UpdateTransactionState.InstallReturned, UpdateTransactionState.PostInstallChecking, true)]
+    [InlineData(UpdateTransactionState.PreflightPassed, UpdateTransactionState.Failed, true)]
     public void CanTransition_enforces_state_machine(
         UpdateTransactionState from,
         UpdateTransactionState to,

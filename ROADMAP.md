@@ -82,14 +82,16 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 
 - Before snapshots, export abstraction, recovery manifest
 
-### Batch 10 — Broker ✅ (current)
+### Batch 10 — Broker ✅
 
 - One-shot elevated broker, named pipe IPC, replay protection
 - No driver install enabled yet
 
-### Batch 11 — Simulated mutation workflow
+### Batch 11 — Simulated mutation workflow ✅ (current)
 
 - End-to-end plan → preflight → simulated install → verification
+- Optional broker plan validation before simulated download
+- CLI `tortoise workflow run`
 
 ### Batch 12 — Disposable VM installation
 
