@@ -64,6 +64,8 @@ public sealed class WuaBrowseOnlyPolicyTests
         public string DriverModel => "Adapter";
         public string DriverProvider => "Intel";
         public DateTime DriverVerDate => DateTime.UtcNow;
+        public bool RebootRequired => false;
+        public bool IsPresent => false;
         public bool BrowseOnly { get; init; }
     }
 }

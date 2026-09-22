@@ -23,7 +23,7 @@ public sealed class WindowsSystemEnvironmentProvider : ISystemEnvironmentProvide
         var snapshot = new SystemSnapshot(
             Environment.OSVersion.VersionString,
             RuntimeInformation.OSArchitecture.ToString(),
-            _pendingRebootDetector.IsPendingReboot(),
+            _pendingRebootDetector.DetectPendingReboot() != PendingRebootState.NotPending,
             DateTimeOffset.UtcNow);
 
         return Task.FromResult(snapshot);

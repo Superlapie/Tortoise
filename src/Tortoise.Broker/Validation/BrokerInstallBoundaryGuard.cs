@@ -15,12 +15,14 @@ public static class BrokerInstallBoundaryGuard
             ? new WindowsPendingRebootDetector()
             : null;
 
-        if (pendingRebootDetector?.IsPendingReboot() == true)
+        return pendingRebootDetector?.DetectPendingReboot() switch
         {
-            return Deny("Elevated broker install blocked because a system reboot is pending.");
-        }
-
-        return Allow();
+            PendingRebootState.Pending => Deny(
+                "Elevated broker install blocked because a system reboot is pending."),
+            PendingRebootState.Unknown => Deny(
+                "Elevated broker install blocked because pending-reboot status could not be determined."),
+            _ => Allow(),
+        };
     }
 
     public static BrokerInstallBoundaryResult ValidateServicingLock(MutationServicingLock? servicingLock)

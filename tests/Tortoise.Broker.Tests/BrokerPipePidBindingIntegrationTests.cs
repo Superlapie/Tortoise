@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.Versioning;
 using Tortoise.Broker.Ipc;
 using Tortoise.Contracts.Elevation;
 using Tortoise.Contracts.Mutation;
@@ -35,31 +34,40 @@ public sealed class BrokerPipePidBindingIntegrationTests
             AuthorizedClientProcessId = Environment.ProcessId,
         };
 
+        Process? wrongPidProbe = null;
         var serverTask = BrokerHost.RunOnceAsync(options);
-        await Task.Delay(200);
-
-        using var wrongPidProbe = Process.Start(new ProcessStartInfo
+        try
         {
-            FileName = "dotnet",
-            Arguments = $"\"{probePath}\" \"{pipeName}\" {sessionId} {capability} 5000",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        }) ?? throw new InvalidOperationException("Failed to start broker pipe probe.");
+            await Task.Delay(200);
 
-        var wrongPidOutput = await wrongPidProbe.StandardOutput.ReadToEndAsync();
-        await wrongPidProbe.WaitForExitAsync();
+            wrongPidProbe = Process.Start(new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = $"\"{probePath}\" \"{pipeName}\" {sessionId} {capability} 5000",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            }) ?? throw new InvalidOperationException("Failed to start broker pipe probe.");
 
-        Assert.Equal(3, wrongPidProbe.ExitCode);
-        Assert.Contains("ClientProcessMismatch", wrongPidOutput, StringComparison.Ordinal);
+            var wrongPidOutput = await ProcessProbeTestSupport.ReadProcessOutputAsync(
+                wrongPidProbe,
+                ProcessProbeTestSupport.DefaultProbeTimeout);
 
-        var authorizedClient = new BrokerPipeClient();
-        var response = await authorizedClient.SendAsync(
-            options,
-            BrokerRequestFactory.Create(BrokerOperation.Ping, sessionId, capability));
+            Assert.Equal(3, wrongPidProbe.ExitCode);
+            Assert.Contains("ClientProcessMismatch", wrongPidOutput, StringComparison.Ordinal);
 
-        Assert.True(response.Succeeded);
-        await serverTask;
+            var authorizedClient = new BrokerPipeClient();
+            var response = await authorizedClient.SendAsync(
+                options,
+                BrokerRequestFactory.Create(BrokerOperation.Ping, sessionId, capability));
+
+            Assert.True(response.Succeeded);
+            await serverTask;
+        }
+        finally
+        {
+            ProcessProbeTestSupport.EnsureTerminated(wrongPidProbe);
+        }
     }
 
     private static string? LocateBrokerPipeProbe()

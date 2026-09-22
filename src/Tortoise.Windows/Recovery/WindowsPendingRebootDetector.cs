@@ -7,27 +7,39 @@ namespace Tortoise.Windows.Recovery;
 [SupportedOSPlatform("windows")]
 public sealed class WindowsPendingRebootDetector : IPendingRebootDetector
 {
-    public bool IsPendingReboot()
+    public PendingRebootState DetectPendingReboot()
     {
-        if (HasPendingFileRenameOperations())
+        var states = new[]
         {
-            return true;
+            EvaluateIndicator(HasPendingFileRenameOperations),
+            EvaluateIndicator(HasWindowsUpdateRebootRequiredKey),
+            EvaluateIndicator(HasComponentBasedServicingRebootPending),
+        };
+
+        if (states.Any(state => state == PendingRebootState.Pending))
+        {
+            return PendingRebootState.Pending;
         }
 
-        if (HasWindowsUpdateRebootRequiredKey())
+        if (states.Any(state => state == PendingRebootState.Unknown))
         {
-            return true;
+            return PendingRebootState.Unknown;
         }
 
-        if (HasComponentBasedServicingRebootPending())
-        {
-            return true;
-        }
-
-        return false;
+        return PendingRebootState.NotPending;
     }
 
-    private static bool HasPendingFileRenameOperations()
+    private static PendingRebootState EvaluateIndicator(Func<bool?> probe)
+    {
+        return probe() switch
+        {
+            true => PendingRebootState.Pending,
+            false => PendingRebootState.NotPending,
+            null => PendingRebootState.Unknown,
+        };
+    }
+
+    private static bool? HasPendingFileRenameOperations()
     {
         try
         {
@@ -38,11 +50,11 @@ public sealed class WindowsPendingRebootDetector : IPendingRebootDetector
         }
         catch
         {
-            return false;
+            return null;
         }
     }
 
-    private static bool HasWindowsUpdateRebootRequiredKey()
+    private static bool? HasWindowsUpdateRebootRequiredKey()
     {
         try
         {
@@ -52,11 +64,11 @@ public sealed class WindowsPendingRebootDetector : IPendingRebootDetector
         }
         catch
         {
-            return false;
+            return null;
         }
     }
 
-    private static bool HasComponentBasedServicingRebootPending()
+    private static bool? HasComponentBasedServicingRebootPending()
     {
         try
         {
@@ -66,7 +78,7 @@ public sealed class WindowsPendingRebootDetector : IPendingRebootDetector
         }
         catch
         {
-            return false;
+            return null;
         }
     }
 }

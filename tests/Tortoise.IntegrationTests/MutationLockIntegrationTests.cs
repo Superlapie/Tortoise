@@ -20,18 +20,29 @@ public sealed class MutationLockIntegrationTests
             throw new InvalidOperationException("tortoise-mutation-lock-probe was not found.");
         }
 
-        using var workflowHolder = StartProbe(probePath, "hold", "workflow");
-        await WaitForOutputLineAsync(workflowHolder, "HOLDING");
+        Process? workflowHolder = null;
+        Process? servicingProbe = null;
+        try
+        {
+            workflowHolder = ProcessProbeTestSupport.StartProbe(probePath, "hold", "workflow");
+            await ProcessProbeTestSupport.WaitForOutputLineAsync(
+                workflowHolder,
+                "HOLDING",
+                ProcessProbeTestSupport.DefaultProbeTimeout);
 
-        using var servicingProbe = StartProbe(probePath, "servicing");
-        var servicingOutput = await servicingProbe.StandardOutput.ReadToEndAsync();
-        await servicingProbe.WaitForExitAsync();
+            servicingProbe = ProcessProbeTestSupport.StartProbe(probePath, "servicing");
+            var servicingOutput = await ProcessProbeTestSupport.ReadProcessOutputAsync(
+                servicingProbe,
+                ProcessProbeTestSupport.DefaultProbeTimeout);
 
-        Assert.Equal(0, servicingProbe.ExitCode);
-        Assert.Contains("ACQUIRED", servicingOutput, StringComparison.Ordinal);
-
-        workflowHolder.Kill(entireProcessTree: true);
-        await workflowHolder.WaitForExitAsync();
+            Assert.Equal(0, servicingProbe.ExitCode);
+            Assert.Contains("ACQUIRED", servicingOutput, StringComparison.Ordinal);
+        }
+        finally
+        {
+            ProcessProbeTestSupport.EnsureTerminated(workflowHolder);
+            ProcessProbeTestSupport.EnsureTerminated(servicingProbe);
+        }
     }
 
     [Fact]
@@ -48,47 +59,29 @@ public sealed class MutationLockIntegrationTests
             throw new InvalidOperationException("tortoise-mutation-lock-probe was not found.");
         }
 
-        using var workflowHolder = StartProbe(probePath, "hold", "workflow");
-        await WaitForOutputLineAsync(workflowHolder, "HOLDING");
-
-        using var competingWorkflow = StartProbe(probePath, "workflow");
-        var competingOutput = await competingWorkflow.StandardOutput.ReadToEndAsync();
-        await competingWorkflow.WaitForExitAsync();
-
-        Assert.Equal(2, competingWorkflow.ExitCode);
-        Assert.Contains("DENIED", competingOutput, StringComparison.Ordinal);
-
-        workflowHolder.Kill(entireProcessTree: true);
-        await workflowHolder.WaitForExitAsync();
-    }
-
-    private static Process StartProbe(string probePath, params string[] args)
-    {
-        return Process.Start(new ProcessStartInfo
+        Process? workflowHolder = null;
+        Process? competingWorkflow = null;
+        try
         {
-            FileName = "dotnet",
-            Arguments = $"\"{probePath}\" {string.Join(' ', args)}",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        }) ?? throw new InvalidOperationException("Failed to start mutation lock probe.");
-    }
+            workflowHolder = ProcessProbeTestSupport.StartProbe(probePath, "hold", "workflow");
+            await ProcessProbeTestSupport.WaitForOutputLineAsync(
+                workflowHolder,
+                "HOLDING",
+                ProcessProbeTestSupport.DefaultProbeTimeout);
 
-    private static async Task WaitForOutputLineAsync(Process process, string expectedLine)
-    {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (DateTime.UtcNow < deadline)
-        {
-            var line = await process.StandardOutput.ReadLineAsync();
-            if (line is not null && line.Contains(expectedLine, StringComparison.Ordinal))
-            {
-                return;
-            }
+            competingWorkflow = ProcessProbeTestSupport.StartProbe(probePath, "workflow");
+            var competingOutput = await ProcessProbeTestSupport.ReadProcessOutputAsync(
+                competingWorkflow,
+                ProcessProbeTestSupport.DefaultProbeTimeout);
 
-            await Task.Delay(50);
+            Assert.Equal(2, competingWorkflow.ExitCode);
+            Assert.Contains("DENIED", competingOutput, StringComparison.Ordinal);
         }
-
-        throw new TimeoutException($"Timed out waiting for probe output containing '{expectedLine}'.");
+        finally
+        {
+            ProcessProbeTestSupport.EnsureTerminated(workflowHolder);
+            ProcessProbeTestSupport.EnsureTerminated(competingWorkflow);
+        }
     }
 
     private static string? LocateMutationLockProbe()

@@ -137,7 +137,7 @@ internal interface IUpdate3 : IUpdate2
 }
 
 [ComImport]
-[Guid("704EB274-037E-4193-9A31-F1AF54EF8746")]
+[Guid("27E94B0D-5139-49A2-9A61-93522DC54652")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdate4 : IUpdate3
 {
@@ -179,11 +179,23 @@ internal interface IWindowsDriverUpdate : IUpdate
 }
 
 [ComImport]
-[Guid("49EBD502-4A96-41BD-9E3E-4C5057F4250C")]
+[Guid("615C4269-7A48-43BD-96B7-BF6CA27D6C3E")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
-internal interface IWindowsDriverUpdate3 : IWindowsDriverUpdate
+internal interface IWindowsDriverUpdate2 : IWindowsDriverUpdate
 {
     [DispId(0x60040001)]
+    bool RebootRequired { get; }
+
+    [DispId(0x60040003)]
+    bool IsPresent { get; }
+}
+
+[ComImport]
+[Guid("49EBD502-4A96-41BD-9E3E-4C5057F4250C")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IWindowsDriverUpdate3 : IWindowsDriverUpdate2
+{
+    [DispId(0x60050001)]
     bool BrowseOnly { get; }
 }
 
@@ -246,11 +258,12 @@ internal interface IDownloadResult
     [DispId(0x60020002)]
     OperationResultCode ResultCode { get; }
 
+    [DispId(0x60020003)]
     IUpdateDownloadResult GetUpdateResult([In] int index);
 }
 
 [ComImport]
-[Guid("756CB0B0-BDD9-4B53-8437-765F95F75978")]
+[Guid("BF99AF76-B575-42AD-8AA4-33CBB5477AF1")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdateDownloadResult
 {
@@ -299,11 +312,12 @@ internal interface IInstallationResult
     [DispId(0x60020003)]
     OperationResultCode ResultCode { get; }
 
+    [DispId(0x60020004)]
     IUpdateInstallationResult GetUpdateResult([In] int index);
 }
 
 [ComImport]
-[Guid("31C966BC-16BB-43CB-8861-B509B0AF6B47")]
+[Guid("D940F0F8-3CBB-4FD0-993F-471E7F2328AD")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdateInstallationResult
 {
@@ -311,5 +325,8 @@ internal interface IUpdateInstallationResult
     int HResult { get; }
 
     [DispId(0x60020002)]
+    bool RebootRequired { get; }
+
+    [DispId(0x60020003)]
     OperationResultCode ResultCode { get; }
 }
