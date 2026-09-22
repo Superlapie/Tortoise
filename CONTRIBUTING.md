@@ -2,6 +2,17 @@
 
 Thank you for contributing. Tortoise is security-sensitive software; conservative changes are preferred.
 
+## Licensing and contributions
+
+By contributing to this repository, you agree that:
+
+1. Your contributions are licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+2. You grant Superlapie the right to use, sublicense, and commercially license your contributions as part of Tortoise under separate commercial license terms offered to paying customers.
+
+You keep copyright in your contributions, but you may not contribute code you do not have the right to license under these terms.
+
+Commercial use of Tortoise itself still requires a separate commercial license. See [COMMERCIAL.md](COMMERCIAL.md).
+
 ## Pull request checklist
 
 Security-sensitive areas (broker, installation, IPC, signature verification, risk policy, recovery, firmware policy) require:

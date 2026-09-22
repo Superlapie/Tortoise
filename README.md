@@ -1,5 +1,8 @@
 # Tortoise
 
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg)](LICENSE)
+[![Commercial license available](https://img.shields.io/badge/commercial%20use-contact%20author-blue.svg)](COMMERCIAL.md)
+
 **Transparent Windows driver management.**
 
 Tortoise is a safety-first Windows driver inventory, health, update, recovery, and diagnostics utility. It tells users exactly what drivers their machine is using, what Windows considers applicable updates, why an update is recommended, where it comes from, what risk it carries, and what will happen before anything is changed.
@@ -92,6 +95,13 @@ Tortoise is **local only** by default. See [PRIVACY.md](PRIVACY.md).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Security-sensitive changes require extra review.
 
+- [Commercial licensing](COMMERCIAL.md)
+
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Tortoise uses **dual licensing**:
+
+- **Noncommercial use** — free under the [PolyForm Noncommercial License 1.0.0](LICENSE). You can read, fork, contribute, learn from, and use the project for personal, hobby, educational, and other noncommercial purposes.
+- **Commercial use** — requires a separate paid license. See [COMMERCIAL.md](COMMERCIAL.md) for what counts as commercial use and how to contact me.
+
+If you want to ship a commercial product, service, MSP workflow, or client deliverable with Tortoise in the pipeline, get a commercial license first.
