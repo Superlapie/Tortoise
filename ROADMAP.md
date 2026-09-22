@@ -27,7 +27,7 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 
 ## Implementation batches
 
-### Batch 0 — Repository constitution ✅ (current)
+### Batch 0 — Repository constitution ✅
 
 - Solution, projects, build settings
 - License and core docs
@@ -35,12 +35,12 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 - CI workflows and ADRs
 - Initial commit
 
-### Batch 1 — Domain foundation
+### Batch 1 — Domain foundation ✅ (current)
 
 - Domain models (`DeviceIdentity`, `DriverPackage`, `UpdatePlan`, etc.)
 - Error model and update classifications
 - Risk model and transaction states
-- Policy engine interfaces
+- Policy engine interfaces and default policies
 - Unit tests
 
 ### Batch 2 — Windows device inventory

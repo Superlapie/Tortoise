@@ -9,12 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial repository constitution (Batch 0)
-- Solution structure with Core, Contracts, Windows, WindowsUpdate, Security, Persistence, Broker, Cli, App
-- Global mutation-disabled gate (`IMutationCapability`, `MutationGuard`)
-- Core documentation: README, SAFETY, SECURITY, PRIVACY, ARCHITECTURE, THREAT_MODEL, ROADMAP
-- Architecture decision records (ADR 0001–0010)
-- GitHub Actions CI workflows
+- Batch 1 domain foundation: device/driver/update models, transaction state machine, error model, policy interfaces, and unit tests
 
 ## [0.1.0-alpha] - TBD
 
