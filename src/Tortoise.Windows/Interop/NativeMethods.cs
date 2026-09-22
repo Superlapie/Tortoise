@@ -112,8 +112,8 @@ internal static partial class ConfigManagerNative
 {
     [LibraryImport(NativeLibraries.CfgMgr32, EntryPoint = "CM_Get_Device_ID_List_SizeW", StringMarshalling = StringMarshalling.Utf16)]
     internal static partial ConfigRet GetDeviceIdListSize(
-        string? filterInstanceId,
         out uint length,
+        string? filterInstanceId,
         GetDeviceIdListFilter filter);
 
     [LibraryImport(NativeLibraries.CfgMgr32, EntryPoint = "CM_Get_Device_ID_ListW", StringMarshalling = StringMarshalling.Utf16)]

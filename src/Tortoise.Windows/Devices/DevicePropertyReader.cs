@@ -11,7 +11,7 @@ internal static class DevicePropertyReader
 {
     internal static IReadOnlyList<string> EnumeratePresentDeviceInstanceIds()
     {
-        var sizeResult = ConfigManagerNative.GetDeviceIdListSize(null, out var length, GetDeviceIdListFilter.Present);
+        var sizeResult = ConfigManagerNative.GetDeviceIdListSize(out var length, null, GetDeviceIdListFilter.Present);
         if (sizeResult != ConfigRet.Success || length == 0)
         {
             throw CreateInteropException("CM_Get_Device_ID_List_Size", sizeResult);

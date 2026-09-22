@@ -17,7 +17,7 @@ internal static class WuaInstallExecutor
 
         return WuaSessionRunner.Execute(session =>
         {
-            var searcher = (IUpdateSearcher)session.CreateUpdateSearcher();
+            var searcher = session.CreateUpdateSearcher();
             var criteria =
                 $"UpdateID='{updateId}' and RevisionNumber={revision.ToString(CultureInfo.InvariantCulture)}";
 
@@ -38,8 +38,8 @@ internal static class WuaInstallExecutor
 
             if (searchResult.Updates.Count == 0)
             {
-                Marshal.ReleaseComObject(searchResult);
-                Marshal.ReleaseComObject(searcher);
+                WuaComFactory.ReleaseComObject(searchResult);
+                WuaComFactory.ReleaseComObject(searcher);
                 return new WindowsUpdateInstallResult(
                     false,
                     ResultCode: (int)OperationResultCode.Failed,
@@ -48,9 +48,48 @@ internal static class WuaInstallExecutor
             }
 
             var update = searchResult.Updates[0];
-            var installer = (IUpdateInstaller)session.CreateUpdateInstaller();
-            var collection = new UpdateCollection();
+            var collection = WuaComFactory.CreateUpdateCollection();
             collection.Add(update);
+
+            var downloader = session.CreateUpdateDownloader();
+            downloader.Updates = collection;
+
+            IDownloadResult downloadResult;
+            try
+            {
+                downloadResult = downloader.Download();
+            }
+            catch (COMException ex)
+            {
+                throw new TortoiseException(
+                    TortoiseErrorCategory.WindowsUpdateError,
+                    "Windows Update driver download failed.",
+                    $"WUA download failed: {ex.Message}",
+                    ex.HResult,
+                    ex);
+            }
+
+            if (downloadResult.ResultCode is not OperationResultCode.Succeeded
+                and not OperationResultCode.SucceededWithErrors)
+            {
+                var downloadCode = (int)downloadResult.ResultCode;
+                WuaComFactory.ReleaseComObject(downloadResult);
+                WuaComFactory.ReleaseComObject(downloader);
+                WuaComFactory.ReleaseComObject(collection);
+                WuaComFactory.ReleaseComObject(update);
+                WuaComFactory.ReleaseComObject(searchResult);
+                WuaComFactory.ReleaseComObject(searcher);
+
+                return new WindowsUpdateInstallResult(
+                    false,
+                    downloadCode,
+                    RebootRequired: false,
+                    $"Windows Update download returned result code {downloadCode.ToString(CultureInfo.InvariantCulture)} (HRESULT 0x{downloadResult.HResult:X8}).");
+            }
+
+            WuaComFactory.ReleaseComObject(downloadResult);
+
+            var installer = session.CreateUpdateInstaller();
             installer.Updates = collection;
 
             if (installer is IUpdateInstaller2 installer2)
@@ -83,15 +122,16 @@ internal static class WuaInstallExecutor
             var succeeded = installationResult.ResultCode is OperationResultCode.Succeeded
                 or OperationResultCode.SucceededWithErrors;
             var message = succeeded
-                ? "Windows Update reported that driver installation completed."
+                ? "Windows Update reported that driver download and installation completed."
                 : $"Windows Update install returned result code {resultCode.ToString(CultureInfo.InvariantCulture)} (HRESULT 0x{installationResult.HResult:X8}).";
 
-            Marshal.ReleaseComObject(installationResult);
-            Marshal.ReleaseComObject(collection);
-            Marshal.ReleaseComObject(installer);
-            Marshal.ReleaseComObject(update);
-            Marshal.ReleaseComObject(searchResult);
-            Marshal.ReleaseComObject(searcher);
+            WuaComFactory.ReleaseComObject(installationResult);
+            WuaComFactory.ReleaseComObject(installer);
+            WuaComFactory.ReleaseComObject(downloader);
+            WuaComFactory.ReleaseComObject(collection);
+            WuaComFactory.ReleaseComObject(update);
+            WuaComFactory.ReleaseComObject(searchResult);
+            WuaComFactory.ReleaseComObject(searcher);
 
             return new WindowsUpdateInstallResult(succeeded, resultCode, rebootRequired, message);
         });

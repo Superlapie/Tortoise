@@ -29,19 +29,6 @@ internal enum AutoSelectionMode
 }
 
 [ComImport]
-[Guid("4CB43D7F-7EEE-4906-8698-60DA1C38F2FE")]
-[CoClass(typeof(UpdateSessionClass))]
-internal interface UpdateSession : IUpdateSession
-{
-}
-
-[ComImport]
-[Guid("4CB43D7F-7EEE-4906-8698-60DA1C38F2FE")]
-internal class UpdateSessionClass
-{
-}
-
-[ComImport]
 [Guid("816858A4-260D-4260-933A-2585F1ABC76B")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdateSession
@@ -49,11 +36,14 @@ internal interface IUpdateSession
     [DispId(0x60020001)]
     string ClientApplicationID { get; set; }
 
-    [return: MarshalAs(UnmanagedType.IDispatch)]
-    object CreateUpdateSearcher();
+    [DispId(0x60020004)]
+    IUpdateSearcher CreateUpdateSearcher();
 
-    [return: MarshalAs(UnmanagedType.IDispatch)]
-    object CreateUpdateInstaller();
+    [DispId(0x60020005)]
+    IUpdateDownloader CreateUpdateDownloader();
+
+    [DispId(0x60020006)]
+    IUpdateInstaller CreateUpdateInstaller();
 }
 
 [ComImport]
@@ -64,7 +54,7 @@ internal interface IUpdateSearcher
     [DispId(0x60020007)]
     ServerSelection ServerSelection { get; set; }
 
-    [return: MarshalAs(UnmanagedType.Interface)]
+    [DispId(0x6002000C)]
     ISearchResult Search([In][MarshalAs(UnmanagedType.BStr)] string criteria);
 }
 
@@ -78,19 +68,6 @@ internal interface ISearchResult
 
     [DispId(0x60020003)]
     IUpdateCollection Updates { get; }
-}
-
-[ComImport]
-[Guid("13639463-00DB-4646-803D-528026140D88")]
-[CoClass(typeof(UpdateCollectionClass))]
-internal interface UpdateCollection : IUpdateCollection
-{
-}
-
-[ComImport]
-[Guid("13639463-00DB-4646-803D-528026140D88")]
-internal class UpdateCollectionClass
-{
 }
 
 [ComImport]
@@ -193,7 +170,7 @@ internal interface IUpdateIdentity
 }
 
 [ComImport]
-[Guid("3CABF931-8951-4504-9037-DE4B7B5362A4")]
+[Guid("3A56BFB8-576C-43F7-9335-FE4838FD7E37")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface ICategoryCollection
 {
@@ -205,15 +182,39 @@ internal interface ICategoryCollection
 }
 
 [ComImport]
-[Guid("BFA6E560-FC09-4529-8859-006A43BA45CA")]
+[Guid("81DDC1B8-9D35-47A6-B471-5B80F519223B")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface ICategory
 {
-    [DispId(0x60020001)]
+    [DispId(0)]
     string Name { get; }
 
-    [DispId(0x60020002)]
+    [DispId(0x60020001)]
     string CategoryID { get; }
+}
+
+[ComImport]
+[Guid("68F1C6F9-7ECC-4666-A464-247FE12496C3")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IUpdateDownloader
+{
+    [DispId(0x60020004)]
+    IUpdateCollection Updates { get; set; }
+
+    [return: MarshalAs(UnmanagedType.Interface)]
+    IDownloadResult Download();
+}
+
+[ComImport]
+[Guid("DAA4FDD0-4727-4DBE-A1E7-745DCA317144")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IDownloadResult
+{
+    [DispId(0x60020001)]
+    int HResult { get; }
+
+    [DispId(0x60020002)]
+    OperationResultCode ResultCode { get; }
 }
 
 [ComImport]

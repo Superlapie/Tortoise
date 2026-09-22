@@ -4,6 +4,7 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using Tortoise.Broker.Handling;
 using Tortoise.Broker.Serialization;
+using Tortoise.Broker.Validation;
 using Tortoise.Contracts.Elevation;
 using Tortoise.Contracts.Mutation;
 using Tortoise.Core.Devices;
@@ -160,8 +161,18 @@ public static class BrokerHost
         IDeviceInventoryProvider? deviceInventoryProvider = OperatingSystem.IsWindows()
             ? new WindowsDeviceInventoryProvider()
             : null;
+        IBrokerLiveInstallVerifier? liveInstallVerifier = deviceInventoryProvider is not null
+            ? new BrokerLiveInstallVerifier(
+                deviceInventoryProvider,
+                new WuaLiveWindowsUpdateCandidateProvider())
+            : null;
 
-        var handler = new BrokerRequestHandler(options, detector, planAuthority, installService, deviceInventoryProvider);
+        var handler = new BrokerRequestHandler(
+            options,
+            detector,
+            planAuthority,
+            installService,
+            liveInstallVerifier);
         var server = new BrokerPipeServer(handler);
         return server.ServeOnceAsync(options, cancellationToken);
     }

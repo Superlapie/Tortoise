@@ -92,10 +92,10 @@ internal static class WuaSessionRunner
 {
     internal static T Execute<T>(Func<IUpdateSession, T> action)
     {
-        UpdateSession? session = null;
+        IUpdateSession? session = null;
         try
         {
-            session = new UpdateSession();
+            session = WuaComFactory.CreateSession();
             session.ClientApplicationID = "Tortoise";
             return action(session);
         }
@@ -110,10 +110,7 @@ internal static class WuaSessionRunner
         }
         finally
         {
-            if (session is not null)
-            {
-                Marshal.ReleaseComObject(session);
-            }
+            WuaComFactory.ReleaseComObject(session);
         }
     }
 }
@@ -126,7 +123,7 @@ internal static class WuaSearchExecutor
 
         return WuaSessionRunner.Execute(session =>
         {
-            var searcher = (IUpdateSearcher)session.CreateUpdateSearcher();
+            var searcher = session.CreateUpdateSearcher();
             var policy = WindowsUpdateClassificationMapper.DescribePolicy((int)searcher.ServerSelection);
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -183,7 +180,7 @@ internal static class WuaSearchExecutor
 
         return WuaSessionRunner.Execute(session =>
         {
-            var searcher = (IUpdateSearcher)session.CreateUpdateSearcher();
+            var searcher = session.CreateUpdateSearcher();
             var criteria =
                 $"UpdateID='{updateId}' and RevisionNumber={revision.ToString(CultureInfo.InvariantCulture)}";
 
@@ -222,7 +219,7 @@ internal static class WuaSearchExecutor
 
         return WuaSessionRunner.Execute(session =>
         {
-            var searcher = (IUpdateSearcher)session.CreateUpdateSearcher();
+            var searcher = session.CreateUpdateSearcher();
             var criteria =
                 $"UpdateID='{updateId}' and RevisionNumber={revision.ToString(CultureInfo.InvariantCulture)}";
 

@@ -71,24 +71,9 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
             UpdateTransactionState.Discovered,
             timestamp);
 
-        transaction = Advance(
-            transaction,
-            UpdateTransactionState.Eligible,
-            journal,
-            "VM install transaction opened.",
-            ref timestamp);
-        transaction = Advance(
-            transaction,
-            UpdateTransactionState.Planned,
-            journal,
-            "Frozen plan loaded for VM install.",
-            ref timestamp);
-        transaction = Advance(
-            transaction,
-            UpdateTransactionState.PreflightRunning,
-            journal,
-            "Preflight started.",
-            ref timestamp);
+        transaction = Advance(transaction, UpdateTransactionState.Eligible, journal, "VM install transaction opened.", ref timestamp);
+        transaction = Advance(transaction, UpdateTransactionState.Planned, journal, "Frozen plan loaded for VM install.", ref timestamp);
+        transaction = Advance(transaction, UpdateTransactionState.PreflightRunning, journal, "Preflight started.", ref timestamp);
 
         if (storedPlan.RiskLevel != DriverRiskLevel.Low
             || storedPlan.Classification != UpdateClassification.WindowsRecommended)
@@ -114,11 +99,7 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
                     StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException("Target device is no longer present in the current inventory.");
 
-        var preflight = _preflightService.RunPreflight(
-            storedPlan,
-            currentDevice,
-            capability);
-
+        var preflight = _preflightService.RunPreflight(storedPlan, currentDevice, capability);
         if (preflight.IsBlocked)
         {
             return await FailAsync(
@@ -134,12 +115,9 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
                 cancellationToken);
         }
 
-        transaction = Advance(
-            transaction,
-            UpdateTransactionState.PreflightPassed,
-            journal,
-            "Preflight passed.",
-            ref timestamp);
+        transaction = Advance(transaction, UpdateTransactionState.PreflightPassed, journal, "Preflight passed.", ref timestamp);
+        await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
+
         transaction = Advance(
             transaction,
             UpdateTransactionState.AwaitingConsent,
@@ -152,6 +130,7 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
             journal,
             "Broker elevation requested.",
             ref timestamp);
+        await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
 
         BrokerPlanValidationResult? brokerValidation = null;
         if (options.RequireBrokerValidation)
@@ -194,8 +173,9 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
             transaction,
             UpdateTransactionState.Installing,
             journal,
-            "Broker driver install started.",
+            "Elevated WUA download+install boundary entered.",
             ref timestamp);
+        await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
 
         var candidate = storedPlan.Plan.ProposedUpdate.Candidate;
         var brokerInstall = await _brokerDriverInstallClient.InstallDriverAsync(
@@ -227,6 +207,38 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
             journal,
             "Broker driver install returned.",
             ref timestamp);
+        await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
+
+        if (brokerInstall.RebootRequired)
+        {
+            transaction = Advance(
+                transaction,
+                UpdateTransactionState.RestartRequired,
+                journal,
+                "Windows Update reported that a reboot is required before verification can complete.",
+                ref timestamp);
+            transaction = Advance(
+                transaction,
+                UpdateTransactionState.AwaitingReboot,
+                journal,
+                "VM install is awaiting reboot; transaction remains open.",
+                ref timestamp);
+            await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
+
+            return new VmDriverInstallResult(
+                storedPlan.PlanId,
+                preflight,
+                brokerValidation,
+                brokerInstall,
+                new UpdateVerification(
+                    transactionId,
+                    UpdateVerificationResult.InstalledRestartRequired,
+                    "Driver install returned but reboot is required before Tortoise can verify completion.",
+                    DateTimeOffset.UtcNow),
+                CompletedSuccessfully: false,
+                Summary: "Disposable VM install requires a reboot before it can be marked complete.");
+        }
+
         transaction = Advance(
             transaction,
             UpdateTransactionState.PostInstallChecking,
@@ -250,40 +262,26 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
 
         if (postInstallVerification.Result == UpdateVerificationResult.Failed)
         {
-            transaction = Advance(
-                transaction,
-                UpdateTransactionState.Failed,
-                journal,
-                postInstallVerification.Message,
-                ref timestamp);
-            await _transactionStore.SaveAsync(new UpdateTransactionRecord(transaction, journal), cancellationToken);
-
-            return new VmDriverInstallResult(
+            return await FailAsync(
                 storedPlan.PlanId,
+                transaction,
+                journal,
+                UpdateTransactionState.Failed,
                 preflight,
                 brokerValidation,
                 brokerInstall,
                 postInstallVerification,
-                CompletedSuccessfully: false,
-                Summary: postInstallVerification.Message);
+                postInstallVerification.Message,
+                cancellationToken);
         }
 
         transaction = Advance(
             transaction,
-            brokerInstall.RebootRequired
-                ? UpdateTransactionState.RestartRequired
-                : UpdateTransactionState.Completed,
+            UpdateTransactionState.Completed,
             journal,
-            brokerInstall.RebootRequired
-                ? "VM install completed; reboot may be required."
-                : "VM install completed and post-install verification passed.",
+            "VM install completed and post-install verification passed.",
             ref timestamp);
-
-        await _transactionStore.SaveAsync(new UpdateTransactionRecord(transaction, journal), cancellationToken);
-
-        var summary = brokerInstall.RebootRequired
-            ? "Disposable VM install completed; a reboot may be required."
-            : "Disposable VM install completed and post-install verification passed.";
+        await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
 
         return new VmDriverInstallResult(
             storedPlan.PlanId,
@@ -292,7 +290,7 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
             brokerInstall,
             postInstallVerification,
             CompletedSuccessfully: true,
-            Summary: summary);
+            Summary: "Disposable VM install completed and post-install verification passed.");
     }
 
     private async Task<VmDriverInstallResult> FailAsync(
@@ -309,7 +307,7 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
     {
         var timestamp = DateTimeOffset.UtcNow;
         transaction = Advance(transaction, terminalState, journal, summary, ref timestamp);
-        await _transactionStore.SaveAsync(new UpdateTransactionRecord(transaction, journal), cancellationToken);
+        await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
 
         return new VmDriverInstallResult(
             planId,
@@ -331,16 +329,6 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
         UpdateTransactionState to,
         IList<OperationJournalEntry> journal,
         string message,
-        ref DateTimeOffset timestamp)
-    {
-        journal.Add(new OperationJournalEntry(
-            transaction.TransactionId,
-            transaction.State,
-            to,
-            timestamp,
-            message));
-
-        timestamp = timestamp.AddMilliseconds(1);
-        return transaction with { State = to, UpdatedAtUtc = timestamp };
-    }
+        ref DateTimeOffset timestamp) =>
+        UpdateTransactionJournal.Advance(transaction, to, journal, message, ref timestamp);
 }

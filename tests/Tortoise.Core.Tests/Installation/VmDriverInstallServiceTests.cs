@@ -124,6 +124,28 @@ public sealed class VmDriverInstallServiceTests
     }
 
     [Fact]
+    public async Task InstallAsync_returns_incomplete_when_broker_requires_reboot()
+    {
+        var storedPlan = CreateStoredPlan(DriverRiskLevel.Low);
+        var device = CreateDevice(new Version(1, 0));
+        var service = CreateService(
+            new ExecutionEnvironmentInfo(true, true, true),
+            new FakeBrokerDriverInstallClient(new BrokerDriverInstallResult(true, "installed", 2, true)),
+            storedPlan,
+            device,
+            afterInstallVersion: new Version(1, 0));
+
+        var result = await service.InstallAsync(
+            storedPlan.PlanId,
+            new VmDriverInstallOptions(
+                RequireBrokerValidation: false,
+                BrokerOptions: new BrokerPlanValidationOptions(1, "test-capability")));
+
+        Assert.False(result.CompletedSuccessfully);
+        Assert.Equal(UpdateVerificationResult.InstalledRestartRequired, result.PostInstallVerification.Result);
+    }
+
+    [Fact]
     public async Task InstallAsync_completes_when_broker_install_and_verification_succeed()
     {
         var storedPlan = CreateStoredPlan(DriverRiskLevel.Low);

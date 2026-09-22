@@ -1,5 +1,6 @@
 using Tortoise.Broker.Handling;
 using Tortoise.Broker.Ipc;
+using Tortoise.Broker.Validation;
 using Tortoise.Contracts.Elevation;
 using Tortoise.Contracts.Mutation;
 using Tortoise.Core.Installation;
@@ -196,14 +197,25 @@ public sealed class BrokerRequestHandlerTests
         bool allowDriverInstall,
         ExecutionEnvironmentInfo? environment = null,
         IWindowsUpdateDriverInstallService? installService = null,
-        IBrokerPlanAuthority? planAuthority = null)
+        IBrokerPlanAuthority? planAuthority = null,
+        IBrokerLiveInstallVerifier? liveInstallVerifier = null)
     {
         return new BrokerRequestHandler(
             CreateOptions(allowDriverInstall),
             new StaticExecutionEnvironmentDetector(
                 environment ?? new ExecutionEnvironmentInfo(false, false, false)),
             planAuthority ?? new FakeBrokerPlanAuthority(authorized: true),
-            installService);
+            installService,
+            liveInstallVerifier ?? new FakeBrokerLiveInstallVerifier());
+    }
+
+    private sealed class FakeBrokerLiveInstallVerifier : IBrokerLiveInstallVerifier
+    {
+        public Task<BrokerPlanAuthorityResult> VerifyInstallBoundaryAsync(
+            StoredUpdatePlan storedPlan,
+            BrokerInstallPayload payload,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new BrokerPlanAuthorityResult(true, "TOCTOU passed.", storedPlan));
     }
 
     private sealed class FakeWindowsUpdateDriverInstallService : IWindowsUpdateDriverInstallService

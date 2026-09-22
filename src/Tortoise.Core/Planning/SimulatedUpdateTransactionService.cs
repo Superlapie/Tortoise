@@ -496,15 +496,8 @@ public sealed class SimulatedUpdateTransactionService : ISimulatedUpdateTransact
         string message,
         ref DateTimeOffset timestamp)
     {
-        if (!UpdateTransactionTransitions.CanTransition(from, to))
-        {
-            throw new InvalidOperationException(
-                $"Invalid simulated transition from '{from}' to '{to}'.");
-        }
-
-        timestamp = timestamp.AddMilliseconds(1);
-        journal.Add(new OperationJournalEntry(transactionId, from, to, timestamp, message));
-        return new UpdateTransaction(transactionId, planId, to, timestamp);
+        var transaction = new UpdateTransaction(transactionId, planId, from, timestamp);
+        return UpdateTransactionJournal.Advance(transaction, to, journal, message, ref timestamp);
     }
 
     private sealed record SimulationContext(

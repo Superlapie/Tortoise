@@ -61,8 +61,12 @@ public static class UpdatePlanFactory
         var payload = new UpdatePlanCanonicalPayload(
             planId,
             deviceSnapshot.Identity.DeviceInstanceId,
-            deviceSnapshot.Identity.HardwareIds.ToArray(),
-            deviceSnapshot.Identity.CompatibleIds.ToArray(),
+            deviceSnapshot.Identity.HardwareIds
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            deviceSnapshot.Identity.CompatibleIds
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
             deviceSnapshot.Identity.ClassGuid,
             currentDriver.Package.Identity.ProviderName,
             currentDriver.Package.Identity.PublishedInfName,
