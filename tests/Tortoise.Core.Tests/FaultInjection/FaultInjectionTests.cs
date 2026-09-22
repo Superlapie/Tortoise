@@ -9,6 +9,7 @@ using Tortoise.Core.Updates;
 
 namespace Tortoise.Core.Tests.FaultInjection;
 
+[Collection(nameof(FaultInjectionEnvironment))]
 public sealed class FaultInjectionGateTests
 {
     [Fact]
@@ -26,6 +27,7 @@ public sealed class FaultInjectionGateTests
     }
 }
 
+[Collection(nameof(FaultInjectionEnvironment))]
 public sealed class FaultInjectionWorkflowServiceTests
 {
     [Theory]
