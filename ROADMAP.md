@@ -49,12 +49,12 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 - Device enumeration, hardware IDs, health/problem codes
 - Read-only integration tests
 
-### Batch 3 — Driver package inventory ✅ (current)
+### Batch 3 — Driver package inventory ✅
 
 - Package enumeration and device/package association
 - PnPUtil structured fallback (read-only)
 
-### Batch 4 — Windows Update scanning
+### Batch 4 — Windows Update scanning ✅ (current)
 
 - WUA wrapper, driver-only search
 - Recommended vs optional, managed-policy handling

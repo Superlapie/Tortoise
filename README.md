@@ -17,13 +17,14 @@ Current capabilities:
 - Domain models, policies, and transaction state machine
 - Windows device inventory via ConfigMgr/SetupAPI (read-only)
 - Driver store inventory via PnPUtil with device/package association
-- `tortoise scan`, `tortoise devices`, and `tortoise packages` CLI on Windows
+- Windows Update driver scan via WUA (recommended/optional, managed-policy aware)
+- `tortoise scan`, `tortoise devices`, `tortoise packages`, and `tortoise updates` CLI on Windows
 - Initial documentation and architecture decision records
 - CI scaffolding
 
 Current limitations:
 
-- No Windows Update scanning yet
+- No recommendation engine yet
 - No driver installation (mutation permanently disabled during early development)
 - WPF UI is a placeholder shell
 

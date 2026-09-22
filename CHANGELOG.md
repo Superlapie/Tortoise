@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Batch 3 driver package inventory with PnPUtil enumeration and device association
-- Disabled export abstraction for future recovery workflows
-- `tortoise packages` CLI command
+- Batch 4 Windows Update scanning via WUA COM wrapper
+- Driver-only search with recommended/optional classification and managed-policy detection
+- `tortoise updates [--optional]` CLI command
 
 ## [0.1.0-alpha] - TBD
 

@@ -2,7 +2,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Tortoise.Contracts.Mutation;
 using Tortoise.Core.Devices;
 using Tortoise.Core.Drivers;
+using Tortoise.Core.Updates;
 using Tortoise.Windows.Extensions;
+using Tortoise.WindowsUpdate.Extensions;
 
 if (args.Length == 0)
 {
@@ -15,6 +17,7 @@ return command switch
 {
     "scan" or "devices" => await RunDeviceScanAsync(args),
     "packages" or "drivers" => await RunPackageScanAsync(args),
+    "updates" => await RunUpdatesScanAsync(args),
     "status" => RunStatus(),
     _ => PrintUnknown(command),
 };
@@ -27,6 +30,7 @@ static int PrintUsage()
     Console.WriteLine("  tortoise scan");
     Console.WriteLine("  tortoise devices [--problem]");
     Console.WriteLine("  tortoise packages");
+    Console.WriteLine("  tortoise updates [--optional]");
     Console.WriteLine("  tortoise status");
     return 0;
 }
@@ -121,6 +125,60 @@ static async Task<int> RunPackageScanAsync(string[] args)
 
     Console.WriteLine($"Store packages: {result.StorePackages.Count}");
     Console.WriteLine($"Active associations: {result.Associations.Count}");
+    if (result.Warnings.Count > 0)
+    {
+        Console.WriteLine($"Warnings: {result.Warnings.Count}");
+    }
+
+    return 0;
+}
+
+static async Task<int> RunUpdatesScanAsync(string[] args)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("Windows Update scanning requires Windows.");
+        return 1;
+    }
+
+    var includeOptional = args.Contains("--optional", StringComparer.OrdinalIgnoreCase);
+    var services = new ServiceCollection();
+    services.AddTortoiseWindowsUpdate();
+    var provider = services.BuildServiceProvider().GetRequiredService<IDriverUpdateProvider>();
+    var result = await provider.ScanAsync();
+
+    Console.WriteLine(result.Policy.DisplayMessage);
+    Console.WriteLine();
+
+    var candidates = result.Candidates.AsEnumerable();
+    if (!includeOptional)
+    {
+        candidates = candidates.Where(candidate =>
+            candidate.Classification is UpdateClassification.WindowsRecommended
+                or UpdateClassification.ReviewRequired
+                or UpdateClassification.Restricted);
+    }
+
+    foreach (var candidate in candidates.OrderBy(candidate => candidate.Classification).ThenBy(candidate => candidate.Title))
+    {
+        Console.WriteLine(candidate.Title);
+        Console.WriteLine($"  Classification: {candidate.Classification}");
+        Console.WriteLine($"  Update ID: {candidate.UpdateId}");
+        Console.WriteLine($"  Revision: {candidate.Revision}");
+        if (!string.IsNullOrWhiteSpace(candidate.DriverManufacturer))
+        {
+            Console.WriteLine($"  Manufacturer: {candidate.DriverManufacturer}");
+        }
+
+        if (candidate.RestartRequired)
+        {
+            Console.WriteLine("  Restart: Required");
+        }
+
+        Console.WriteLine();
+    }
+
+    Console.WriteLine($"Candidates: {result.Candidates.Count}");
     if (result.Warnings.Count > 0)
     {
         Console.WriteLine($"Warnings: {result.Warnings.Count}");
