@@ -43,13 +43,13 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 - Policy engine interfaces and default policies
 - Unit tests
 
-### Batch 2 — Windows device inventory ✅ (current)
+### Batch 2 — Windows device inventory ✅
 
 - ConfigMgr/SetupAPI wrappers
 - Device enumeration, hardware IDs, health/problem codes
 - Read-only integration tests
 
-### Batch 3 — Driver package inventory
+### Batch 3 — Driver package inventory ✅ (current)
 
 - Package enumeration and device/package association
 - PnPUtil structured fallback (read-only)

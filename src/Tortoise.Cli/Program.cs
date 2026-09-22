@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Tortoise.Contracts.Mutation;
 using Tortoise.Core.Devices;
-using Tortoise.Windows.Devices;
+using Tortoise.Core.Drivers;
 using Tortoise.Windows.Extensions;
 
 if (args.Length == 0)
@@ -14,6 +14,7 @@ var command = args[0].ToLowerInvariant();
 return command switch
 {
     "scan" or "devices" => await RunDeviceScanAsync(args),
+    "packages" or "drivers" => await RunPackageScanAsync(args),
     "status" => RunStatus(),
     _ => PrintUnknown(command),
 };
@@ -25,6 +26,7 @@ static int PrintUsage()
     Console.WriteLine("Commands:");
     Console.WriteLine("  tortoise scan");
     Console.WriteLine("  tortoise devices [--problem]");
+    Console.WriteLine("  tortoise packages");
     Console.WriteLine("  tortoise status");
     return 0;
 }
@@ -86,6 +88,39 @@ static async Task<int> RunDeviceScanAsync(string[] args)
     }
 
     Console.WriteLine($"Devices: {result.Devices.Count}");
+    if (result.Warnings.Count > 0)
+    {
+        Console.WriteLine($"Warnings: {result.Warnings.Count}");
+    }
+
+    return 0;
+}
+
+static async Task<int> RunPackageScanAsync(string[] args)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("Driver package inventory requires Windows.");
+        return 1;
+    }
+
+    var services = new ServiceCollection();
+    services.AddTortoiseWindowsDriverPackageInventory();
+    var provider = services.BuildServiceProvider().GetRequiredService<IDriverPackageInventoryProvider>();
+    var result = await provider.ScanAsync();
+
+    foreach (var package in result.StorePackages.OrderBy(package => package.ClassName).ThenBy(package => package.ProviderName))
+    {
+        Console.WriteLine($"{package.PublishedInfName}");
+        Console.WriteLine($"  Provider: {package.ProviderName}");
+        Console.WriteLine($"  Class: {package.ClassName}");
+        Console.WriteLine($"  Version: {package.DriverVersion}");
+        Console.WriteLine($"  Inbox: {package.IsInbox}");
+        Console.WriteLine();
+    }
+
+    Console.WriteLine($"Store packages: {result.StorePackages.Count}");
+    Console.WriteLine($"Active associations: {result.Associations.Count}");
     if (result.Warnings.Count > 0)
     {
         Console.WriteLine($"Warnings: {result.Warnings.Count}");

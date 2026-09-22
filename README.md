@@ -16,13 +16,13 @@ Current capabilities:
 - Global mutation-disabled safety gate
 - Domain models, policies, and transaction state machine
 - Windows device inventory via ConfigMgr/SetupAPI (read-only)
-- `tortoise scan` / `tortoise devices` CLI on Windows
+- Driver store inventory via PnPUtil with device/package association
+- `tortoise scan`, `tortoise devices`, and `tortoise packages` CLI on Windows
 - Initial documentation and architecture decision records
 - CI scaffolding
 
 Current limitations:
 
-- No driver package inventory yet
 - No Windows Update scanning yet
 - No driver installation (mutation permanently disabled during early development)
 - WPF UI is a placeholder shell

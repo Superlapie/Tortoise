@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Batch 2 Windows device inventory with ConfigMgr/SetupAPI interop
-- `IDeviceInventoryProvider`, health/problem mapping, and `tortoise scan` CLI
-- Windows read-only integration tests for device enumeration
+- Batch 3 driver package inventory with PnPUtil enumeration and device association
+- Disabled export abstraction for future recovery workflows
+- `tortoise packages` CLI command
 
 ## [0.1.0-alpha] - TBD
 
