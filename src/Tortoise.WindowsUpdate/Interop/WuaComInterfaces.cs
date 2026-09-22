@@ -30,6 +30,12 @@ internal interface IUpdateSession
 {
     [return: MarshalAs(UnmanagedType.IDispatch)]
     object CreateUpdateSearcher();
+
+    [return: MarshalAs(UnmanagedType.IDispatch)]
+    object CreateUpdateInstaller();
+
+    [return: MarshalAs(UnmanagedType.IDispatch)]
+    object CreateUpdateCollection();
 }
 
 [ComImport]
@@ -66,6 +72,9 @@ internal interface IUpdateCollection
 
     [DispId(0)]
     IUpdate this[[In][MarshalAs(UnmanagedType.Struct)] int index] { get; }
+
+    [DispId(1610743812)]
+    void Add([In][MarshalAs(UnmanagedType.IDispatch)] IUpdate update);
 }
 
 [ComImport]
@@ -153,4 +162,28 @@ internal interface ICategory
 
     [DispId(1610743811)]
     string CategoryID { get; }
+}
+
+[ComImport]
+[Guid("7B905F35-12DE-4CEC-ADFB-B9AED56552FA")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IUpdateInstaller
+{
+    [DispId(1610743810)]
+    IUpdateCollection Updates { get; set; }
+
+    [DispId(1610743811)]
+    bool ForceQuiet { get; set; }
+
+    [DispId(1610743812)]
+    int Install();
+}
+
+[ComImport]
+[Guid("1444FDEF-9B72-4BEA-B1AC-36A77A3C5240")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IUpdateInstaller2 : IUpdateInstaller
+{
+    [DispId(1610743814)]
+    bool RebootRequiredBeforeInstallation { get; }
 }

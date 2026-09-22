@@ -3,6 +3,8 @@ using Tortoise.Contracts.Mutation;
 using Tortoise.Core.Devices;
 using Tortoise.Core.Diagnostics;
 using Tortoise.Core.Drivers;
+using Tortoise.Core.Installation;
+using Tortoise.Core.Mutation;
 using Tortoise.Core.Planning;
 using Tortoise.Core.Recovery;
 using Tortoise.Core.Recommendations;
@@ -14,6 +16,7 @@ using Tortoise.Security.Broker;
 using Tortoise.Broker.Extensions;
 using Tortoise.Broker.Ipc;
 using Tortoise.Windows.Extensions;
+using Tortoise.WindowsUpdate.Environment;
 using Tortoise.WindowsUpdate.Extensions;
 
 if (args.Length == 0)
@@ -34,6 +37,7 @@ return command switch
     "preflight" => await RunPreflightAsync(args),
     "simulate" => await RunSimulateAsync(args),
     "workflow" => await RunWorkflowAsync(args),
+    "vm" => await RunVmAsync(args),
     "recover" => await RunRecoverAsync(args),
     "broker" => await RunBrokerAsync(args),
     "status" => RunStatus(),
@@ -56,6 +60,8 @@ static int PrintUsage()
     Console.WriteLine("  tortoise preflight <plan-id> [--db=path]");
     Console.WriteLine("  tortoise simulate <plan-id> [--db=path]");
     Console.WriteLine("  tortoise workflow run <plan-id> [--skip-broker] [--session-id=N] [--pipe=name] [--db=path]");
+    Console.WriteLine("  tortoise vm status");
+    Console.WriteLine("  tortoise vm install <plan-id> [--skip-broker-validate] [--session-id=N] [--pipe=name] [--db=path]");
     Console.WriteLine("  tortoise recover prepare <plan-id> [--output-dir=path] [--db=path]");
     Console.WriteLine("  tortoise recover list [--plan-id=guid] [--db=path]");
     Console.WriteLine("  tortoise recover export <preparation-id> <path> [--db=path]");
@@ -75,8 +81,18 @@ static int PrintUnknown(string command)
 
 static int RunStatus()
 {
-    Console.WriteLine($"Mutation enabled: {MutationCapability.ReadOnly.IsEnabled}");
-    Console.WriteLine($"Environment: {MutationCapability.ReadOnly.Environment}");
+    IExecutionEnvironmentDetector detector = OperatingSystem.IsWindows()
+        ? new WindowsExecutionEnvironmentDetector()
+        : new UnsupportedExecutionEnvironmentDetector();
+    var environment = detector.Detect();
+    var capability = MutationCapabilityResolver.Resolve(environment);
+
+    Console.WriteLine($"Mutation enabled: {capability.IsEnabled}");
+    Console.WriteLine($"Environment: {capability.Environment}");
+    Console.WriteLine($"Reason: {capability.Reason}");
+    Console.WriteLine($"Disposable VM detected: {environment.IsDisposableVm}");
+    Console.WriteLine($"Mutation tests marker: {environment.MutationTestsEnabled}");
+    Console.WriteLine($"VM install marker: {environment.VmInstallExplicitlyAllowed}");
     Console.WriteLine($"Platform: {(OperatingSystem.IsWindows() ? "Windows" : "Unsupported for device scan")}");
     return 0;
 }
@@ -439,6 +455,99 @@ static async Task<int> RunSimulateAsync(string[] args)
     return result.ReachedAwaitingConsent ? 0 : 2;
 }
 
+static async Task<int> RunVmAsync(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: tortoise vm <status|install> ...");
+        return 1;
+    }
+
+    return args[1].ToLowerInvariant() switch
+    {
+        "status" => RunVmStatus(),
+        "install" => await RunVmInstallAsync(args),
+        _ => PrintUnknown(args[1]),
+    };
+}
+
+static int RunVmStatus()
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("VM status requires Windows.");
+        return 1;
+    }
+
+    return RunStatus();
+}
+
+static async Task<int> RunVmInstallAsync(string[] args)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("VM install requires Windows.");
+        return 1;
+    }
+
+    if (args.Length < 3 || !Guid.TryParse(args[2], out var planId))
+    {
+        Console.Error.WriteLine("Usage: tortoise vm install <plan-id> [--skip-broker-validate] [--session-id=N] [--pipe=name] [--db=path]");
+        return 1;
+    }
+
+    var skipBrokerValidate = args.Contains("--skip-broker-validate", StringComparer.OrdinalIgnoreCase);
+    var services = new ServiceCollection();
+    services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+    services.AddTortoiseVmDriverInstall();
+    services.AddTortoiseBrokerPlanValidation();
+    services.AddTortoiseBrokerDriverInstall();
+
+    var provider = services.BuildServiceProvider();
+    var scanStore = provider.GetRequiredService<IScanSessionStore>();
+    var installService = provider.GetRequiredService<IVmDriverInstallService>();
+    await scanStore.InitializeAsync();
+
+    var brokerHostOptions = CreateBrokerHostOptions(args);
+    await StartBrokerServerIfNeededAsync(brokerHostOptions with { AllowDriverInstall = true });
+    var brokerOptions = new BrokerPlanValidationOptions(
+        brokerHostOptions.SessionId,
+        brokerHostOptions.PipeName,
+        brokerHostOptions.ConnectTimeoutMs);
+
+    try
+    {
+        var result = await installService.InstallAsync(
+            planId,
+            new VmDriverInstallOptions(
+                RequireBrokerValidation: !skipBrokerValidate,
+                BrokerOptions: brokerOptions));
+
+        Console.WriteLine(result.Summary);
+        Console.WriteLine($"Plan: {result.PlanId}");
+        Console.WriteLine($"Preflight blocked: {result.Preflight.IsBlocked}");
+        Console.WriteLine($"Post-install verification: {result.PostInstallVerification.Result}");
+
+        if (result.BrokerValidation is not null)
+        {
+            Console.WriteLine($"Broker validation: {(result.BrokerValidation.Succeeded ? "Succeeded" : "Failed")}");
+        }
+
+        if (result.BrokerInstall is not null)
+        {
+            Console.WriteLine($"Broker install result code: {result.BrokerInstall.ResultCode}");
+            Console.WriteLine($"Reboot required: {result.BrokerInstall.RebootRequired}");
+        }
+
+        return result.CompletedSuccessfully ? 0 : 2;
+    }
+    catch (MutationDeniedException ex)
+    {
+        Console.Error.WriteLine(ex.Reason);
+        return 2;
+    }
+}
+
 static async Task<int> RunWorkflowAsync(string[] args)
 {
     if (!OperatingSystem.IsWindows())
@@ -766,6 +875,7 @@ static BrokerHostOptions CreateBrokerHostOptions(string[] args)
     {
         SessionId = sessionId,
         PipeName = ParseBrokerPipeName(args),
+        AllowDriverInstall = BrokerHostOptions.ShouldAllowDriverInstall(),
     };
 }
 

@@ -1,6 +1,9 @@
 using Tortoise.Broker.Handling;
 using Tortoise.Broker.Ipc;
 using Tortoise.Contracts.Elevation;
+using Tortoise.Contracts.Mutation;
+using Tortoise.Core.Installation;
+using Tortoise.Core.Mutation;
 using Tortoise.Security.Broker;
 
 namespace Tortoise.Broker.Tests;
@@ -32,15 +35,36 @@ public sealed class BrokerRequestValidatorTests
     }
 
     [Fact]
-    public void Validate_rejects_install_driver_operation()
+    public void Validate_rejects_install_driver_when_not_enabled()
     {
         var replayGuard = new BrokerReplayGuard();
-        var request = BrokerRequestFactory.Create(BrokerOperation.InstallDriver, sessionId: 42);
+        var request = BrokerRequestFactory.CreateInstallDriver(
+            sessionId: 42,
+            planId: Guid.NewGuid(),
+            planHash: new string('A', 64),
+            updateId: Guid.NewGuid().ToString(),
+            revision: 1);
 
-        var result = _validator.Validate(request, 42, replayGuard);
+        var result = _validator.Validate(request, 42, replayGuard, allowDriverInstall: false);
 
         Assert.False(result.IsValid);
         Assert.Equal(BrokerErrorCode.MutationDisabled, result.ErrorCode);
+    }
+
+    [Fact]
+    public void Validate_accepts_install_driver_when_enabled_and_payload_valid()
+    {
+        var replayGuard = new BrokerReplayGuard();
+        var request = BrokerRequestFactory.CreateInstallDriver(
+            sessionId: 42,
+            planId: Guid.NewGuid(),
+            planHash: new string('A', 64),
+            updateId: Guid.NewGuid().ToString(),
+            revision: 1);
+
+        var result = _validator.Validate(request, 42, replayGuard, allowDriverInstall: true);
+
+        Assert.True(result.IsValid);
     }
 
     [Fact]
@@ -62,17 +86,82 @@ public sealed class BrokerRequestValidatorTests
 
 public sealed class BrokerRequestHandlerTests
 {
-    private readonly BrokerRequestHandler _handler = new();
-
     [Fact]
-    public void Handle_returns_status_with_install_disabled()
+    public void Handle_returns_status_with_install_disabled_by_default()
     {
+        var handler = CreateHandler(allowDriverInstall: false);
         var request = BrokerRequestFactory.Create(BrokerOperation.GetStatus, sessionId: 7);
-        var response = _handler.Handle(request, expectedSessionId: 7);
+        var response = handler.Handle(request, expectedSessionId: 7);
 
         Assert.True(response.Succeeded);
         Assert.Contains("\"driverInstallEnabled\":false", response.PayloadJson!, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ValidatePlan", response.PayloadJson!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Handle_reports_install_enabled_in_vm_mode()
+    {
+        var handler = CreateHandler(
+            allowDriverInstall: true,
+            environment: new ExecutionEnvironmentInfo(true, true, true));
+        var request = BrokerRequestFactory.Create(BrokerOperation.GetStatus, sessionId: 7);
+        var response = handler.Handle(request, expectedSessionId: 7);
+
+        Assert.True(response.Succeeded);
+        Assert.Contains("\"driverInstallEnabled\":true", response.PayloadJson!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("InstallDriver", response.PayloadJson!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Handle_install_driver_uses_fake_install_service_in_vm_mode()
+    {
+        var handler = CreateHandler(
+            allowDriverInstall: true,
+            environment: new ExecutionEnvironmentInfo(true, true, true),
+            installService: new FakeWindowsUpdateDriverInstallService());
+
+        var request = BrokerRequestFactory.CreateInstallDriver(
+            sessionId: 7,
+            planId: Guid.NewGuid(),
+            planHash: new string('A', 64),
+            updateId: Guid.NewGuid().ToString(),
+            revision: 1);
+
+        var response = handler.Handle(request, expectedSessionId: 7);
+
+        Assert.True(response.Succeeded);
+        Assert.Contains("completed", response.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static BrokerRequestHandler CreateHandler(
+        bool allowDriverInstall,
+        ExecutionEnvironmentInfo? environment = null,
+        IWindowsUpdateDriverInstallService? installService = null)
+    {
+        var options = new BrokerHostOptions
+        {
+            SessionId = 7,
+            AllowDriverInstall = allowDriverInstall,
+        };
+
+        return new BrokerRequestHandler(
+            options,
+            new StaticExecutionEnvironmentDetector(
+                environment ?? new ExecutionEnvironmentInfo(false, false, false)),
+            installService);
+    }
+
+    private sealed class FakeWindowsUpdateDriverInstallService : IWindowsUpdateDriverInstallService
+    {
+        public Task<WindowsUpdateInstallResult> InstallAsync(
+            string updateId,
+            int revision,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new WindowsUpdateInstallResult(
+                true,
+                ResultCode: 2,
+                RebootRequired: false,
+                "Fake Windows Update install completed."));
     }
 }
 

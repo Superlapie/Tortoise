@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Tortoise.Contracts.Elevation;
 
 namespace Tortoise.Security.Broker;
@@ -13,8 +14,19 @@ public static class BrokerOperationAllowlist
 
     public static bool IsAllowed(BrokerOperation operation) => AllowedOperations.Contains(operation);
 
-    public static IReadOnlyList<string> GetAllowedOperationNames() =>
-        AllowedOperations.Select(operation => operation.ToString()).OrderBy(name => name).ToList();
+    public static IReadOnlyList<string> GetAllowedOperationNames(bool includeDriverInstall = false)
+    {
+        var operations = AllowedOperations.ToList();
+        if (includeDriverInstall)
+        {
+            operations.Add(BrokerOperation.InstallDriver);
+        }
+
+        return operations
+            .Select(operation => operation.ToString())
+            .OrderBy(name => name)
+            .ToList();
+    }
 }
 
 public sealed class BrokerReplayGuard
@@ -43,7 +55,8 @@ public sealed class BrokerRequestValidator
     public BrokerRequestValidationResult Validate(
         BrokerRequest request,
         int expectedSessionId,
-        BrokerReplayGuard replayGuard)
+        BrokerReplayGuard replayGuard,
+        bool allowDriverInstall = false)
     {
         if (request.ProtocolVersion != ElevationConstants.Version)
         {
@@ -67,9 +80,14 @@ public sealed class BrokerRequestValidator
 
         if (request.Operation == BrokerOperation.InstallDriver)
         {
-            return Invalid(
-                BrokerErrorCode.MutationDisabled,
-                "Driver installation through the broker is not enabled.");
+            if (!allowDriverInstall)
+            {
+                return Invalid(
+                    BrokerErrorCode.MutationDisabled,
+                    "Driver installation through the broker is not enabled.");
+            }
+
+            return ValidateInstallDriverRequest(request);
         }
 
         if (!BrokerOperationAllowlist.IsAllowed(request.Operation))
@@ -79,21 +97,66 @@ public sealed class BrokerRequestValidator
 
         if (request.Operation == BrokerOperation.ValidatePlan)
         {
-            if (request.PlanId is null || string.IsNullOrWhiteSpace(request.PlanHash))
-            {
-                return Invalid(BrokerErrorCode.PlanValidationFailed, "Plan validation requires plan id and hash.");
-            }
-
-            if (request.PlanHash.Length != 64
-                || !request.PlanHash.All(static character =>
-                    char.IsAsciiHexDigit(character)))
-            {
-                return Invalid(BrokerErrorCode.PlanValidationFailed, "Plan hash format is invalid.");
-            }
+            return ValidatePlanRequest(request);
         }
 
         return new BrokerRequestValidationResult(true, BrokerErrorCode.None, "Request accepted.");
     }
+
+    private static BrokerRequestValidationResult ValidatePlanRequest(BrokerRequest request)
+    {
+        if (request.PlanId is null || string.IsNullOrWhiteSpace(request.PlanHash))
+        {
+            return Invalid(BrokerErrorCode.PlanValidationFailed, "Plan validation requires plan id and hash.");
+        }
+
+        if (!IsValidPlanHash(request.PlanHash))
+        {
+            return Invalid(BrokerErrorCode.PlanValidationFailed, "Plan hash format is invalid.");
+        }
+
+        return new BrokerRequestValidationResult(true, BrokerErrorCode.None, "Request accepted.");
+    }
+
+    private static BrokerRequestValidationResult ValidateInstallDriverRequest(BrokerRequest request)
+    {
+        var planValidation = ValidatePlanRequest(request);
+        if (!planValidation.IsValid)
+        {
+            return planValidation;
+        }
+
+        if (string.IsNullOrWhiteSpace(request.PayloadJson))
+        {
+            return Invalid(
+                BrokerErrorCode.PlanValidationFailed,
+                "Driver install requires a payload with update identity.");
+        }
+
+        try
+        {
+            var payload = JsonSerializer.Deserialize<BrokerInstallPayload>(request.PayloadJson);
+            if (payload is null
+                || string.IsNullOrWhiteSpace(payload.UpdateId)
+                || payload.Revision <= 0)
+            {
+                return Invalid(
+                    BrokerErrorCode.PlanValidationFailed,
+                    "Driver install payload is invalid.");
+            }
+        }
+        catch (JsonException)
+        {
+            return Invalid(
+                BrokerErrorCode.PlanValidationFailed,
+                "Driver install payload could not be parsed.");
+        }
+
+        return new BrokerRequestValidationResult(true, BrokerErrorCode.None, "Request accepted.");
+    }
+
+    private static bool IsValidPlanHash(string planHash) =>
+        planHash.Length == 64 && planHash.All(static character => char.IsAsciiHexDigit(character));
 
     private static BrokerRequestValidationResult Invalid(BrokerErrorCode errorCode, string message) =>
         new(false, errorCode, message);
@@ -105,7 +168,8 @@ public static class BrokerRequestFactory
         BrokerOperation operation,
         int sessionId,
         Guid? planId = null,
-        string? planHash = null) =>
+        string? planHash = null,
+        string? payloadJson = null) =>
         new(
             ElevationConstants.Version,
             Guid.NewGuid(),
@@ -114,5 +178,22 @@ public static class BrokerRequestFactory
             operation,
             planId,
             planHash,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            payloadJson);
+
+    public static BrokerRequest CreateInstallDriver(
+        int sessionId,
+        Guid planId,
+        string planHash,
+        string updateId,
+        int revision)
+    {
+        var payloadJson = JsonSerializer.Serialize(new BrokerInstallPayload(updateId, revision));
+        return Create(
+            BrokerOperation.InstallDriver,
+            sessionId,
+            planId,
+            planHash,
+            payloadJson);
+    }
 }

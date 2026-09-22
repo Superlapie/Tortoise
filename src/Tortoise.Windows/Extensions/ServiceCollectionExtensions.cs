@@ -2,6 +2,8 @@ using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
 using Tortoise.Core.Devices;
 using Tortoise.Core.Drivers;
+using Tortoise.Core.Installation;
+using Tortoise.Core.Mutation;
 using Tortoise.Core.Planning;
 using Tortoise.Core.Recovery;
 using Tortoise.Core.Recommendations;
@@ -9,6 +11,7 @@ using Tortoise.Core.Updates;
 using Tortoise.Windows.Devices;
 using Tortoise.Windows.Drivers;
 using Tortoise.Windows.Recovery;
+using Tortoise.WindowsUpdate.Environment;
 using Tortoise.WindowsUpdate.Extensions;
 
 namespace Tortoise.Windows.Extensions;
@@ -59,6 +62,16 @@ public static class ServiceCollectionExtensions
     {
         services.AddTortoiseUpdatePlanning();
         services.AddSingleton<ISimulatedMutationWorkflowService, SimulatedMutationWorkflowService>();
+        return services;
+    }
+
+    [SupportedOSPlatform("windows")]
+    public static IServiceCollection AddTortoiseVmDriverInstall(this IServiceCollection services)
+    {
+        services.AddTortoiseUpdatePlanning();
+        services.AddSingleton<IExecutionEnvironmentDetector, WindowsExecutionEnvironmentDetector>();
+        services.AddSingleton<IRealPostInstallVerificationService, RealPostInstallVerificationService>();
+        services.AddSingleton<IVmDriverInstallService, VmDriverInstallService>();
         return services;
     }
 

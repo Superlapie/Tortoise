@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
+using Tortoise.Core.Installation;
 using Tortoise.Core.Updates;
 
 namespace Tortoise.WindowsUpdate.Extensions;
@@ -10,6 +11,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddTortoiseWindowsUpdate(this IServiceCollection services)
     {
         services.AddSingleton<IDriverUpdateProvider, WindowsUpdateDriverProvider>();
+        services.AddSingleton<IWindowsUpdateDriverInstallService, WindowsUpdateDriverInstallService>();
         return services;
     }
 }

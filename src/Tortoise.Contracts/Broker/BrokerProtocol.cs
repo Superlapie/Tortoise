@@ -37,7 +37,12 @@ public sealed record BrokerRequest(
     BrokerOperation Operation,
     Guid? PlanId,
     string? PlanHash,
-    DateTimeOffset IssuedAtUtc);
+    DateTimeOffset IssuedAtUtc,
+    string? PayloadJson = null);
+
+public sealed record BrokerInstallPayload(
+    string UpdateId,
+    int Revision);
 
 public sealed record BrokerResponse(
     Guid RequestId,

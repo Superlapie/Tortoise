@@ -8,7 +8,7 @@ Tortoise is a safety-first Windows driver inventory, health, update, recovery, a
 
 ## Status
 
-**Version:** `0.1.0-alpha` (Batch 11 — simulated mutation workflow)
+**Version:** `0.1.0-alpha` (Batch 12 — disposable VM installation)
 
 Current capabilities:
 
@@ -21,18 +21,20 @@ Current capabilities:
 - Recommendation engine combining devices, updates, and risk policy
 - Frozen update plans with staleness detection, preflight checks, and simulated transactions (no mutation)
 - End-to-end simulated mutation workflow: preflight → broker validation → simulated install → package and post-install verification
+- VM-gated real Windows Update driver install for one low-risk plan (disposable VM + explicit env markers only)
 - Recovery preparation with before snapshots, export abstraction, and recovery manifest export
-- One-shot elevated broker process with named pipe IPC, nonce replay protection, and allowlisted operations (no install)
+- One-shot elevated broker process with named pipe IPC, nonce replay protection, and allowlisted operations (InstallDriver only in VM-gated mode)
 - WPF app with Overview, Devices, Updates, Safety, History, Settings, and About pages
 - Light/dark themes, scan coordination, and persistent SQLite scan history
 - Redacted JSON diagnostics and recovery manifest export via CLI
-- `tortoise broker`, `tortoise recover`, `tortoise plan`, `tortoise workflow`, and full scan/planning CLI on Windows
+- `tortoise broker`, `tortoise recover`, `tortoise plan`, `tortoise workflow`, `tortoise vm`, and full scan/planning CLI on Windows
 - Initial documentation and architecture decision records
 - CI scaffolding
 
 Current limitations:
 
-- No driver installation (mutation permanently disabled; broker rejects `InstallDriver`)
+- No driver installation on physical machines (mutation disabled unless disposable VM markers are set)
+- Real WUA install requires `TORTOISE_MUTATION_TESTS=1`, `TORTOISE_ALLOW_VM_INSTALL=1`, and a detected disposable VM
 - UAC elevation launcher not wired yet (broker serve/ping available for development)
 - Driver package export remains disabled during read-only development
 

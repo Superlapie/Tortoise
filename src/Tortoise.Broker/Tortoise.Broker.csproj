@@ -17,6 +17,7 @@
     <ProjectReference Include="..\Tortoise.Contracts\Tortoise.Contracts.csproj" />
     <ProjectReference Include="..\Tortoise.Core\Tortoise.Core.csproj" />
     <ProjectReference Include="..\Tortoise.Security\Tortoise.Security.csproj" />
+    <ProjectReference Include="..\Tortoise.WindowsUpdate\Tortoise.WindowsUpdate.csproj" />
   </ItemGroup>
 
 </Project>

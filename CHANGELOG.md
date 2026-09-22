@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Batch 12 VM-gated Windows Update driver install for one low-risk plan via broker `InstallDriver` and WUA
+- Environment markers `TORTOISE_MUTATION_TESTS`, `TORTOISE_ALLOW_VM_INSTALL`, and optional `TORTOISE_VM_MARKER`
+- CLI commands: `tortoise vm status` and `tortoise vm install <plan-id>`
 - Batch 11 end-to-end simulated mutation workflow with package verification, post-install verification, and optional broker plan validation
 - CLI command: `tortoise workflow run <plan-id> [--skip-broker] [--session-id=N] [--pipe=name]`
 - `MutationCapability.Simulated` preset for simulation-only paths (mutation remains disabled)

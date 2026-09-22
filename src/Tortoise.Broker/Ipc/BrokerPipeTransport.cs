@@ -2,12 +2,19 @@ using System.IO.Pipes;
 using Tortoise.Broker.Handling;
 using Tortoise.Broker.Serialization;
 using Tortoise.Contracts.Elevation;
+using Tortoise.Contracts.Mutation;
+using Tortoise.Core.Installation;
+using Tortoise.Core.Mutation;
+using Tortoise.WindowsUpdate;
+using Tortoise.WindowsUpdate.Environment;
 
 namespace Tortoise.Broker.Ipc;
 
 public sealed class BrokerPipeServer
 {
-    private readonly BrokerRequestHandler _handler = new();
+    private readonly BrokerRequestHandler _handler;
+
+    public BrokerPipeServer(BrokerRequestHandler handler) => _handler = handler;
 
     public async Task ServeOnceAsync(BrokerHostOptions options, CancellationToken cancellationToken = default)
     {
@@ -62,13 +69,42 @@ public sealed record BrokerHostOptions
     public string? PipeName { get; init; }
 
     public int ConnectTimeoutMs { get; init; } = 5000;
+
+    public bool AllowDriverInstall { get; init; }
+
+    public static bool ShouldAllowDriverInstall()
+    {
+        IExecutionEnvironmentDetector detector = OperatingSystem.IsWindows()
+            ? new WindowsExecutionEnvironmentDetector()
+            : new UnsupportedExecutionEnvironmentDetector();
+
+        var capability = MutationCapabilityResolver.Resolve(detector.Detect());
+        return capability.IsEnabled && capability.Environment == MutationEnvironment.DisposableVm;
+    }
+
+    public static BrokerHostOptions ForSession(int sessionId, string? pipeName = null) =>
+        new()
+        {
+            SessionId = sessionId,
+            PipeName = pipeName,
+            AllowDriverInstall = ShouldAllowDriverInstall(),
+        };
 }
 
 public static class BrokerHost
 {
     public static Task RunOnceAsync(BrokerHostOptions options, CancellationToken cancellationToken = default)
     {
-        var server = new BrokerPipeServer();
+        IExecutionEnvironmentDetector detector = OperatingSystem.IsWindows()
+            ? new WindowsExecutionEnvironmentDetector()
+            : new UnsupportedExecutionEnvironmentDetector();
+
+        IWindowsUpdateDriverInstallService? installService = options.AllowDriverInstall && OperatingSystem.IsWindows()
+            ? new WindowsUpdateDriverInstallService()
+            : null;
+
+        var handler = new BrokerRequestHandler(options, detector, installService);
+        var server = new BrokerPipeServer(handler);
         return server.ServeOnceAsync(options, cancellationToken);
     }
 }

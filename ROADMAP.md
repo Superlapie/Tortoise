@@ -87,15 +87,18 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 - One-shot elevated broker, named pipe IPC, replay protection
 - No driver install enabled yet
 
-### Batch 11 — Simulated mutation workflow ✅ (current)
+### Batch 11 — Simulated mutation workflow ✅
 
 - End-to-end plan → preflight → simulated install → verification
 - Optional broker plan validation before simulated download
 - CLI `tortoise workflow run`
 
-### Batch 12 — Disposable VM installation
+### Batch 12 — Disposable VM installation ✅ (current)
 
-- Smallest real WUA install path, VM-gated, one low-risk update
+- VM-gated real WUA install path for one low-risk Windows-recommended update
+- Environment markers: `TORTOISE_MUTATION_TESTS=1`, `TORTOISE_ALLOW_VM_INSTALL=1`, plus VM detection
+- Broker `InstallDriver` enabled only in disposable VM mode
+- CLI `tortoise vm install` and `tortoise vm status`
 
 ### Batch 13 — Fault injection
 

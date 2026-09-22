@@ -31,7 +31,16 @@ dotnet test Tortoise.slnx -c Release
 
 ## Mutation testing
 
-Never run mutation/install tests on a production workstation. VM-gated mutation tests require explicit environment markers (`TORTOISE_MUTATION_TESTS=1`, etc.).
+Never run mutation/install tests on a production workstation. VM-gated mutation tests require explicit environment markers:
+
+```bash
+TORTOISE_MUTATION_TESTS=1
+TORTOISE_ALLOW_VM_INSTALL=1
+# optional override for controlled test harnesses:
+TORTOISE_VM_MARKER=1
+```
+
+All three conditions (disposable VM detection or marker, mutation tests, VM install opt-in) must be satisfied before real driver installation is enabled.
 
 ## Commits
 
