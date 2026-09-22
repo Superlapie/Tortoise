@@ -134,6 +134,30 @@ public sealed class RecommendationEngineTests
         Assert.Equal(UpdateClassification.WindowsOptional, Assert.Single(result.Recommendations).Classification);
     }
 
+    [Fact]
+    public void ResolveProviderName_prefers_driver_provider_over_manufacturer()
+    {
+        var update = new WindowsUpdateCandidate(
+            "update-id",
+            1,
+            "Intel Network Driver",
+            null,
+            "Intel Corporation",
+            "Net",
+            "Intel Adapter",
+            null,
+            null,
+            UpdateClassification.WindowsRecommended,
+            false,
+            false,
+            false,
+            false,
+            [],
+            DriverProvider: "Intel");
+
+        Assert.Equal("Intel", WindowsUpdateCandidateIdentity.ResolveProviderName(update));
+    }
+
     private static DeviceInventoryEntry CreateDevice(
         string instanceId,
         string className,

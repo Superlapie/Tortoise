@@ -183,6 +183,27 @@ public sealed class VmDriverInstallServiceTests
     }
 
     [Fact]
+    public async Task InstallAsync_does_not_complete_when_post_install_verification_is_inconclusive()
+    {
+        var storedPlan = CreateStoredPlanWithUnknownVersion(DriverRiskLevel.Low);
+        var device = CreateDevice(new Version(1, 0));
+        var service = CreateService(
+            new ExecutionEnvironmentInfo(true, true, true),
+            new FakeBrokerDriverInstallClient(new BrokerDriverInstallResult(true, "installed", 2, false)),
+            storedPlan,
+            device,
+            afterInstallVersion: new Version(1, 0));
+
+        var result = await service.InstallAsync(
+            storedPlan.PlanId,
+            new VmDriverInstallOptions(BrokerOptions: new BrokerPlanValidationOptions(1, "test-capability")));
+
+        Assert.False(result.CompletedSuccessfully);
+        Assert.Equal(UpdateVerificationResult.InstalledInconclusive, result.PostInstallVerification.Result);
+        Assert.NotEqual(UpdateVerificationResult.Verified, result.PostInstallVerification.Result);
+    }
+
+    [Fact]
     public async Task InstallAsync_completes_when_broker_install_and_verification_succeed()
     {
         var storedPlan = CreateStoredPlan(DriverRiskLevel.Low);
@@ -262,6 +283,35 @@ public sealed class VmDriverInstallServiceTests
             int revision,
             CancellationToken cancellationToken = default) =>
             InstallPreparedAsync(updateId, revision, cancellationToken);
+    }
+
+    private static StoredUpdatePlan CreateStoredPlanWithUnknownVersion(DriverRiskLevel riskLevel)
+    {
+        var recommendation = new DeviceUpdateRecommendation(
+            CreateDevice(new Version(1, 0)),
+            new WindowsUpdateCandidate(
+                "update-id",
+                1,
+                "Intel Network Driver",
+                null,
+                "Intel",
+                "Net",
+                "Intel Adapter",
+                null,
+                null,
+                UpdateClassification.WindowsRecommended,
+                false,
+                false,
+                false,
+                false,
+                []),
+            UpdateClassification.WindowsRecommended,
+            riskLevel,
+            "Recommended by Windows",
+            "Explanation",
+            DateTimeOffset.UtcNow);
+
+        return UpdatePlanBuilder.CreateStoredPlan(recommendation, scanSessionId: 1);
     }
 
     private static StoredUpdatePlan CreateStoredPlan(DriverRiskLevel riskLevel)

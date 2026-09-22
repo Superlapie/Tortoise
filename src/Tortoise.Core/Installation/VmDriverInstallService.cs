@@ -301,6 +301,26 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
             deviceAfter,
             transactionId);
 
+        if (postInstallVerification.Result == UpdateVerificationResult.Verified)
+        {
+            transaction = Advance(
+                transaction,
+                UpdateTransactionState.Completed,
+                journal,
+                "VM install completed and post-install verification passed.",
+                ref timestamp);
+            await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
+
+            return new VmDriverInstallResult(
+                storedPlan.PlanId,
+                preflight,
+                null,
+                brokerInstall,
+                postInstallVerification,
+                CompletedSuccessfully: true,
+                Summary: "Disposable VM install completed and post-install verification passed.");
+        }
+
         if (postInstallVerification.Result == UpdateVerificationResult.Failed)
         {
             return await FailAsync(
@@ -317,9 +337,9 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
 
         transaction = Advance(
             transaction,
-            UpdateTransactionState.Completed,
+            UpdateTransactionState.RecoveryRequired,
             journal,
-            "VM install completed and post-install verification passed.",
+            postInstallVerification.Message,
             ref timestamp);
         await UpdateTransactionJournal.PersistAsync(_transactionStore, transaction, journal, cancellationToken);
 
@@ -329,8 +349,8 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
             null,
             brokerInstall,
             postInstallVerification,
-            CompletedSuccessfully: true,
-            Summary: "Disposable VM install completed and post-install verification passed.");
+            CompletedSuccessfully: false,
+            Summary: postInstallVerification.Message);
     }
 
     private async Task<VmDriverInstallResult> FailAsync(

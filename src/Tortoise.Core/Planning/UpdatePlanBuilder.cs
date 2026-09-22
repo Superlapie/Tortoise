@@ -115,12 +115,13 @@ internal static class RecommendationPlanMapper
             ?? throw new InvalidOperationException("Cannot plan an update without an applicable package.");
 
         var device = recommendation.Device;
+        var providerName = WindowsUpdateCandidateIdentity.ResolveProviderName(update);
         var candidate = new DriverCandidate(
             new DriverPackage(
                 new DriverIdentity(
                     update.Title,
                     update.Title,
-                    update.DriverManufacturer ?? "Unknown",
+                    providerName,
                     update.DriverClass ?? device.Snapshot.Identity.ClassName,
                     device.Snapshot.Identity.ClassGuid,
                     update.DriverVersion ?? new Version(0, 0),

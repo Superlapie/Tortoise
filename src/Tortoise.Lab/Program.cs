@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Tortoise.Broker.Extensions;
 using Tortoise.Broker.Ipc;
+using Tortoise.Broker.Validation;
 using Tortoise.Contracts.Elevation;
 using Tortoise.Contracts.Mutation;
 using Tortoise.Core.Installation;
@@ -41,8 +42,8 @@ public static class Program
         Console.WriteLine("Tortoise.Lab (mutation testing — isolated VM only)");
         Console.WriteLine();
         Console.WriteLine("  tortoise-lab status");
-        Console.WriteLine("  tortoise-lab vm install <plan-id> [--db=path]");
-        Console.WriteLine("  tortoise-lab broker serve [--session-id=N] [--pipe=name] [--capability=token] [--db=path]");
+        Console.WriteLine("  tortoise-lab vm install <plan-id> [--db=path-under-lab-root]");
+        Console.WriteLine("  tortoise-lab broker serve [--session-id=N] [--pipe=name] [--capability=token] [--db=path-under-lab-root]");
         return 0;
     }
 
@@ -94,12 +95,18 @@ public static class Program
 
         if (args.Length < 3 || !Guid.TryParse(args[2], out var planId))
         {
-            Console.Error.WriteLine("Usage: tortoise-lab vm install <plan-id> [--db=path]");
+            Console.Error.WriteLine("Usage: tortoise-lab vm install <plan-id> [--db=path-under-lab-root]");
+            return 1;
+        }
+
+        if (!TryResolveLabDatabasePath(args, out var databasePath, out var databaseError))
+        {
+            Console.Error.WriteLine(databaseError);
             return 1;
         }
 
         var services = new ServiceCollection();
-        services.AddTortoisePersistence(options => ConfigureDatabasePath(options, args));
+        services.AddTortoisePersistence(options => options.DatabasePath = databasePath);
         services.AddTortoiseVmDriverInstall();
         services.AddTortoiseBrokerDriverInstall();
         services.AddTortoiseLabBrokerElevation();
@@ -115,7 +122,7 @@ public static class Program
             brokerHostOptions.CapabilityToken,
             brokerHostOptions.PipeName,
             brokerHostOptions.ConnectTimeoutMs,
-            ParseStringArg(args, "--db="));
+            databasePath);
 
         try
         {
@@ -145,8 +152,15 @@ public static class Program
         {
             AllowDriverInstall = true,
             InstallOnlyMode = true,
-            DatabasePath = ParseStringArg(args, "--db="),
         };
+
+        if (!TryResolveLabDatabasePath(args, out var databasePath, out var databaseError))
+        {
+            Console.Error.WriteLine(databaseError);
+            return 1;
+        }
+
+        options = options with { DatabasePath = databasePath };
         Console.WriteLine($"Broker listening on pipe '{options.GetEffectivePipeName()}'");
         await BrokerHost.RunAuthorizedInstallOnceAsync(options);
         return 0;
@@ -167,13 +181,10 @@ public static class Program
         };
     }
 
-    private static void ConfigureDatabasePath(Tortoise.Persistence.Options.TortoisePersistenceOptions options, string[] args)
+    private static bool TryResolveLabDatabasePath(string[] args, out string? databasePath, out string? error)
     {
-        var db = ParseStringArg(args, "--db=");
-        if (db is not null)
-        {
-            options.DatabasePath = db;
-        }
+        var requestedPath = ParseStringArg(args, "--db=");
+        return BrokerDatabasePathValidator.TryValidate(requestedPath, out databasePath, out error);
     }
 
     private static int? ParseIntArg(string[] args, string prefix)

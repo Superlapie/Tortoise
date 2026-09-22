@@ -4,11 +4,13 @@ namespace Tortoise.Contracts.Mutation;
 
 /// <summary>
 /// Runtime gate for real driver mutation. Public Tortoise builds never allow real mutation.
-/// Only <c>tortoise-lab</c> (or explicit test harness activation) enables mutation paths.
+/// Only <c>tortoise-lab</c>, <c>tortoise-lab-broker</c>, or explicit test harness activation
+/// enable mutation capability resolution.
 /// </summary>
 public static class MutationBuildPolicy
 {
     private static bool _testLabModeEnabled;
+    private static bool _testLabBrokerModeEnabled;
 
     public const string PublicBuildNotice =
         "Read-only build — real driver mutation is runtime-guarded in public binaries. Use Tortoise.Lab in an isolated VM for mutation testing.";
@@ -16,28 +18,48 @@ public static class MutationBuildPolicy
     public const string LabBuildNotice =
         "Tortoise.Lab build — real mutation remains VM-gated and requires explicit environment markers.";
 
-    public static bool IsLabBuild => AllowsRealMutation;
+    public static MutationProcessRole CurrentRole =>
+        ResolveRole(Assembly.GetEntryAssembly()?.GetName().Name);
 
-    public static bool IsLabBrokerBuild => IsLabBrokerExecutable() || _testLabBrokerModeEnabled;
+    public static bool IsLabBuild =>
+        CurrentRole == MutationProcessRole.LabClient || _testLabModeEnabled;
 
-    private static bool _testLabBrokerModeEnabled;
+    public static bool IsLabBrokerBuild =>
+        CurrentRole == MutationProcessRole.LabBroker || _testLabBrokerModeEnabled;
 
-    public static bool AllowsRealMutation =>
-        _testLabModeEnabled || IsLabExecutable();
+    public static bool AllowsMutationCapabilityResolution =>
+        CurrentRole is MutationProcessRole.LabClient
+            or MutationProcessRole.LabBroker
+            or MutationProcessRole.Test;
+
+    public static bool AllowsRealMutation => AllowsMutationCapabilityResolution;
 
     public static void EnableTestLabMode() => _testLabModeEnabled = true;
 
     public static void EnableTestLabBrokerMode() => _testLabBrokerModeEnabled = true;
 
-    private static bool IsLabExecutable()
+    public static MutationProcessRole ResolveRole(string? entryAssemblyName)
     {
-        var entryName = Assembly.GetEntryAssembly()?.GetName().Name;
-        return string.Equals(entryName, "tortoise-lab", StringComparison.OrdinalIgnoreCase);
+        if (_testLabModeEnabled || _testLabBrokerModeEnabled)
+        {
+            return MutationProcessRole.Test;
+        }
+
+        if (string.Equals(entryAssemblyName, "tortoise-lab", StringComparison.OrdinalIgnoreCase))
+        {
+            return MutationProcessRole.LabClient;
+        }
+
+        if (string.Equals(entryAssemblyName, "tortoise-lab-broker", StringComparison.OrdinalIgnoreCase))
+        {
+            return MutationProcessRole.LabBroker;
+        }
+
+        return MutationProcessRole.Public;
     }
 
-    private static bool IsLabBrokerExecutable()
-    {
-        var entryName = Assembly.GetEntryAssembly()?.GetName().Name;
-        return string.Equals(entryName, "tortoise-lab-broker", StringComparison.OrdinalIgnoreCase);
-    }
+    public static bool AllowsMutationCapabilityResolutionForRole(MutationProcessRole role) =>
+        role is MutationProcessRole.LabClient
+            or MutationProcessRole.LabBroker
+            or MutationProcessRole.Test;
 }

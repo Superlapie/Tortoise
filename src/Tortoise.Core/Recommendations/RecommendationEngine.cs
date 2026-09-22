@@ -180,11 +180,12 @@ public sealed class RecommendationEngine : IRecommendationEngine
         DeviceInventoryEntry device,
         WindowsUpdateCandidate update)
     {
+        var providerName = WindowsUpdateCandidateIdentity.ResolveProviderName(update);
         var package = new DriverPackage(
             new DriverIdentity(
                 update.Title,
                 update.Title,
-                update.DriverManufacturer ?? "Unknown",
+                providerName,
                 update.DriverClass ?? device.Snapshot.Identity.ClassName,
                 device.Snapshot.Identity.ClassGuid,
                 update.DriverVersion ?? new Version(0, 0),

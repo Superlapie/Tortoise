@@ -66,7 +66,34 @@ public sealed class RealTransactionRecoveryServiceTests
         var result = await service.ReconcileIncompleteAsync(transactionId);
 
         Assert.Equal(UpdateTransactionState.RecoveryRequired, result.FinalState);
-        Assert.True(result.CompletedSuccessfully);
+        Assert.False(result.CompletedSuccessfully);
+    }
+
+    [Fact]
+    public async Task ResumeAfterRebootAsync_does_not_complete_when_verification_is_inconclusive()
+    {
+        var storedPlan = CreateStoredPlanWithUnknownVersion();
+        var transactionId = Guid.NewGuid();
+        var record = new UpdateTransactionRecord(
+            new UpdateTransaction(
+                transactionId,
+                storedPlan.PlanId,
+                UpdateTransactionState.AwaitingReboot,
+                DateTimeOffset.UtcNow),
+            []);
+
+        var service = new RealTransactionRecoveryService(
+            new FakeUpdateTransactionStore(record),
+            new FakeUpdatePlanService(storedPlan),
+            new StaticDeviceInventoryProvider(CreateDevice(new Version(1, 0))),
+            new RealPostInstallVerificationService());
+
+        var result = await service.ResumeAfterRebootAsync(transactionId);
+
+        Assert.False(result.CompletedSuccessfully);
+        Assert.Equal(UpdateTransactionState.RecoveryRequired, result.FinalState);
+        Assert.Equal(UpdateVerificationResult.InstalledInconclusive, result.PostInstallVerification?.Result);
+        Assert.NotEqual(UpdateTransactionState.Completed, result.FinalState);
     }
 
     [Fact]
@@ -93,6 +120,35 @@ public sealed class RealTransactionRecoveryServiceTests
         Assert.Equal(UpdateTransactionState.AwaitingReboot, result.FinalState);
         Assert.False(result.CompletedSuccessfully);
         Assert.Equal(UpdateVerificationResult.InstalledRestartRequired, result.PostInstallVerification?.Result);
+    }
+
+    private static StoredUpdatePlan CreateStoredPlanWithUnknownVersion()
+    {
+        var recommendation = new DeviceUpdateRecommendation(
+            CreateDevice(new Version(1, 0)),
+            new WindowsUpdateCandidate(
+                "update-id",
+                1,
+                "Intel Network Driver",
+                null,
+                "Intel",
+                "Net",
+                "Intel Adapter",
+                null,
+                null,
+                UpdateClassification.WindowsRecommended,
+                false,
+                false,
+                false,
+                false,
+                []),
+            UpdateClassification.WindowsRecommended,
+            DriverRiskLevel.Low,
+            "Recommended by Windows",
+            "Explanation",
+            DateTimeOffset.UtcNow);
+
+        return UpdatePlanBuilder.CreateStoredPlan(recommendation, scanSessionId: 1);
     }
 
     private static StoredUpdatePlan CreateStoredPlan()

@@ -8,7 +8,7 @@ public static class MutationCapabilityResolver
     {
         ArgumentNullException.ThrowIfNull(environment);
 
-        if (!MutationBuildPolicy.AllowsRealMutation)
+        if (!MutationBuildPolicy.AllowsMutationCapabilityResolution)
         {
             return MutationCapability.ReadOnly;
         }

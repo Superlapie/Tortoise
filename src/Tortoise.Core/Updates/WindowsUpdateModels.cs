@@ -24,6 +24,17 @@ public sealed record WindowsUpdateCandidate(
     string? DriverHardwareId = null,
     string? DriverProvider = null);
 
+public static class WindowsUpdateCandidateIdentity
+{
+    public static string ResolveProviderName(WindowsUpdateCandidate update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+        return update.DriverProvider
+            ?? update.DriverManufacturer
+            ?? "Unknown";
+    }
+}
+
 public sealed record WindowsUpdateCandidateDetails(
     WindowsUpdateCandidate Candidate,
     string? MoreInfoUrl,

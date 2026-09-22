@@ -104,6 +104,24 @@ public sealed class RealTransactionRecoveryService : IRealTransactionRecoverySer
             deviceAfter,
             transaction.TransactionId);
 
+        if (verification.Result == UpdateVerificationResult.Verified)
+        {
+            transaction = Advance(
+                transaction,
+                UpdateTransactionState.Completed,
+                journal,
+                "Post-reboot verification passed.",
+                ref timestamp);
+            await _transactionStore.SaveAsync(new UpdateTransactionRecord(transaction, journal), cancellationToken);
+
+            return new RealTransactionRecoveryResult(
+                transaction.TransactionId,
+                transaction.State,
+                true,
+                "Transaction completed after reboot.",
+                verification);
+        }
+
         if (verification.Result == UpdateVerificationResult.Failed)
         {
             transaction = Advance(transaction, UpdateTransactionState.Failed, journal, verification.Message, ref timestamp);
@@ -118,17 +136,17 @@ public sealed class RealTransactionRecoveryService : IRealTransactionRecoverySer
 
         transaction = Advance(
             transaction,
-            UpdateTransactionState.Completed,
+            UpdateTransactionState.RecoveryRequired,
             journal,
-            "Post-reboot verification passed.",
+            verification.Message,
             ref timestamp);
         await _transactionStore.SaveAsync(new UpdateTransactionRecord(transaction, journal), cancellationToken);
 
         return new RealTransactionRecoveryResult(
             transaction.TransactionId,
             transaction.State,
-            true,
-            "Transaction completed after reboot.",
+            false,
+            verification.Message,
             verification);
     }
 
@@ -200,15 +218,14 @@ public sealed class RealTransactionRecoveryService : IRealTransactionRecoverySer
 
         await _transactionStore.SaveAsync(new UpdateTransactionRecord(transaction, journal), cancellationToken);
 
-        var completed = verification.Result == UpdateVerificationResult.Verified;
-        var summary = completed
+        var summary = verification.Result == UpdateVerificationResult.Verified
             ? "Interrupted install appears to have succeeded; transaction moved to recovery-required for manual confirmation."
             : "Interrupted install outcome is inconclusive; do not retry automatically.";
 
         return new RealTransactionRecoveryResult(
             transaction.TransactionId,
             transaction.State,
-            completed,
+            false,
             summary,
             verification);
     }
