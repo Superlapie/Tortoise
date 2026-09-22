@@ -115,6 +115,7 @@ public static class Program
         var scanStore = provider.GetRequiredService<IScanSessionStore>();
         var installService = provider.GetRequiredService<IVmDriverInstallService>();
         await scanStore.InitializeAsync();
+        LabAuthoritativeStoreGuard.EnsureProtectedStoreReady(databasePath!);
 
         var brokerHostOptions = CreateBrokerHostOptions(args);
         var brokerOptions = new BrokerPlanValidationOptions(
@@ -122,7 +123,8 @@ public static class Program
             brokerHostOptions.CapabilityToken,
             brokerHostOptions.PipeName,
             brokerHostOptions.ConnectTimeoutMs,
-            databasePath);
+            databasePath,
+            Environment.ProcessId);
 
         try
         {
@@ -160,7 +162,7 @@ public static class Program
             return 1;
         }
 
-        options = options with { DatabasePath = databasePath };
+        options = options with { DatabasePath = databasePath, AuthorizedClientProcessId = Environment.ProcessId };
         Console.WriteLine($"Broker listening on pipe '{options.GetEffectivePipeName()}'");
         await BrokerHost.RunAuthorizedInstallOnceAsync(options);
         return 0;
@@ -184,7 +186,19 @@ public static class Program
     private static bool TryResolveLabDatabasePath(string[] args, out string? databasePath, out string? error)
     {
         var requestedPath = ParseStringArg(args, "--db=");
-        return BrokerDatabasePathValidator.TryValidate(requestedPath, out databasePath, out error);
+        if (!BrokerDatabasePathValidator.TryValidate(requestedPath, out databasePath, out error))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(databasePath))
+        {
+            error = "Lab database path could not be resolved.";
+            return false;
+        }
+
+        LabAuthoritativeStoreGuard.EnsureProtectedStoreReady(databasePath);
+        return true;
     }
 
     private static int? ParseIntArg(string[] args, string prefix)

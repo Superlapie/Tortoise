@@ -41,6 +41,21 @@ public sealed class BrokerPipeServer
 
         await server.WaitForConnectionAsync(cancellationToken);
 
+        if (!BrokerPipeClientIdentity.IsAuthorizedClient(
+                server,
+                options.AuthorizedClientProcessId,
+                out var clientIdentityError))
+        {
+            var unauthorizedResponse = new BrokerResponse(
+                Guid.Empty,
+                false,
+                BrokerErrorCode.ClientProcessMismatch,
+                clientIdentityError ?? "Named pipe client is not authorized.");
+            var unauthorizedJson = BrokerMessageSerializer.SerializeResponse(unauthorizedResponse);
+            await BrokerMessageSerializer.WriteMessageAsync(server, unauthorizedJson, cancellationToken);
+            return;
+        }
+
         var requestJson = await BrokerMessageSerializer.ReadMessageAsync(server, cancellationToken);
         var request = BrokerMessageSerializer.DeserializeRequest(requestJson);
         var response = await _handler.HandleAsync(request, options, cancellationToken);
@@ -114,6 +129,8 @@ public sealed record BrokerHostOptions
 
     public string? DatabasePath { get; init; }
 
+    public int? AuthorizedClientProcessId { get; init; }
+
     public string GetEffectivePipeName() =>
         PipeName ?? ElevationConstants.GetPipeName(SessionId, CapabilityToken);
 
@@ -184,6 +201,11 @@ public static class BrokerHost
                 throw new InvalidOperationException(validationError ?? "Broker database path is invalid.");
             }
 
+            if (!LabAuthoritativeStoreGuard.ValidateAuthoritativeStore(databasePath!, out var storeError))
+            {
+                throw new InvalidOperationException(storeError ?? "Lab authoritative store validation failed.");
+            }
+
             persistenceOptions.DatabasePath = databasePath;
         }
 
@@ -229,6 +251,11 @@ public static class BrokerElevationLauncher
                 && BrokerDatabasePathValidator.TryValidate(options.DatabasePath, out var databasePath, out _))
             {
                 arguments += $" --db=\"{databasePath}\"";
+            }
+
+            if (options.AuthorizedClientProcessId.HasValue)
+            {
+                arguments += $" --client-pid={options.AuthorizedClientProcessId.Value}";
             }
 
             System.Diagnostics.ProcessStartInfo startInfo;

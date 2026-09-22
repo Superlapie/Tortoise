@@ -34,9 +34,9 @@ public static class MutationBuildPolicy
 
     public static bool AllowsRealMutation => AllowsMutationCapabilityResolution;
 
-    public static void EnableTestLabMode() => _testLabModeEnabled = true;
+    internal static void EnableTestLabMode() => _testLabModeEnabled = true;
 
-    public static void EnableTestLabBrokerMode() => _testLabBrokerModeEnabled = true;
+    internal static void EnableTestLabBrokerMode() => _testLabBrokerModeEnabled = true;
 
     public static MutationProcessRole ResolveRole(string? entryAssemblyName)
     {

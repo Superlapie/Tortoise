@@ -9,7 +9,8 @@ public sealed record BrokerPlanValidationOptions(
     string CapabilityToken,
     string? PipeName = null,
     int ConnectTimeoutMs = 5000,
-    string? DatabasePath = null);
+    string? DatabasePath = null,
+    int? AuthorizedClientProcessId = null);
 
 public sealed record BrokerPlanValidationResult(
     bool Succeeded,

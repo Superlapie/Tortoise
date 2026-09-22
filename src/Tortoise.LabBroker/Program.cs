@@ -11,7 +11,8 @@ public static class Program
     {
         if (args.Length == 0 || !string.Equals(args[0], "serve", StringComparison.OrdinalIgnoreCase))
         {
-            Console.Error.WriteLine("Usage: tortoise-lab-broker serve --session-id=N [--pipe=name] [--capability=token] [--db=path]");
+            Console.Error.WriteLine(
+                "Usage: tortoise-lab-broker serve --session-id=N --client-pid=N [--pipe=name] [--capability=token] [--db=path]");
             return 1;
         }
 
@@ -19,6 +20,12 @@ public static class Program
         {
             Console.Error.WriteLine("This executable is reserved for Tortoise.Lab mutation testing.");
             return 2;
+        }
+
+        if (!TryParseClientProcessId(args, out var clientProcessId))
+        {
+            Console.Error.WriteLine("Lab broker requires --client-pid=<initiating-lab-process-id>.");
+            return 5;
         }
 
         var sessionId = TryParseSessionId(args, out var parsedSessionId)
@@ -34,6 +41,12 @@ public static class Program
             return 4;
         }
 
+        if (!LabAuthoritativeStoreGuard.ValidateAuthoritativeStore(normalizedDatabasePath!, out var storeError))
+        {
+            Console.Error.WriteLine(storeError ?? "Lab authoritative store validation failed.");
+            return 6;
+        }
+
         var options = new BrokerHostOptions
         {
             SessionId = sessionId,
@@ -42,6 +55,7 @@ public static class Program
             AllowDriverInstall = BrokerHostOptions.ShouldAllowLabBrokerDriverInstall(),
             InstallOnlyMode = true,
             DatabasePath = normalizedDatabasePath,
+            AuthorizedClientProcessId = clientProcessId,
         };
 
         if (!options.AllowDriverInstall)
@@ -53,6 +67,22 @@ public static class Program
 
         await BrokerHost.RunAuthorizedInstallOnceAsync(options);
         return 0;
+    }
+
+    private static bool TryParseClientProcessId(string[] args, out int clientProcessId)
+    {
+        clientProcessId = 0;
+        foreach (var arg in args)
+        {
+            if (arg.StartsWith("--client-pid=", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(arg["--client-pid=".Length..], out clientProcessId)
+                && clientProcessId > 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool TryParseSessionId(string[] args, out int sessionId)

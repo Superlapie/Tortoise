@@ -179,6 +179,11 @@ internal static class WuaInstallExecutor
         }
 
         var update = searchResult.Updates[0];
+        if (!WuaUpdateMapper.IsInstallable(update))
+        {
+            return null;
+        }
+
         scope.Track(update);
         var collection = WuaComFactory.CreateUpdateCollection();
         scope.Track(collection);

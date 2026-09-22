@@ -128,6 +128,15 @@ internal interface IUpdate2 : IUpdate
 }
 
 [ComImport]
+[Guid("BA141583-A115-4ACA-9962-EDABC745AEA9")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IUpdate3 : IUpdate2
+{
+    [DispId(0x60040001)]
+    bool BrowseOnly { get; }
+}
+
+[ComImport]
 [Guid("C1C2F21A-D2F4-4902-B5C6-8A081C19A890")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdate5 : IUpdate2

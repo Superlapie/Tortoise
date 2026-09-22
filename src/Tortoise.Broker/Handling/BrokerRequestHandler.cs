@@ -124,6 +124,27 @@ public sealed class BrokerRequestHandler
         BrokerRequest request,
         CancellationToken cancellationToken)
     {
+        var boundary = BrokerInstallBoundaryGuard.ValidateEnvironment();
+        if (!boundary.IsAllowed)
+        {
+            return new BrokerResponse(
+                request.RequestId,
+                false,
+                BrokerErrorCode.MutationDisabled,
+                boundary.Message);
+        }
+
+        using var servicingLock = MutationServicingLock.TryAcquire();
+        var lockBoundary = BrokerInstallBoundaryGuard.ValidateServicingLock(servicingLock);
+        if (!lockBoundary.IsAllowed)
+        {
+            return new BrokerResponse(
+                request.RequestId,
+                false,
+                BrokerErrorCode.MutationDisabled,
+                lockBoundary.Message);
+        }
+
         var capability = MutationCapabilityResolver.Resolve(_environmentDetector.Detect());
         if (!capability.IsEnabled || capability.Environment != MutationEnvironment.DisposableVm)
         {

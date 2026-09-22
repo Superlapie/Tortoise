@@ -8,8 +8,16 @@ namespace Tortoise.WindowsUpdate;
 
 internal static class WuaUpdateMapper
 {
+    internal static bool IsInstallable(IUpdate update) =>
+        update is not IUpdate3 update3 || !update3.BrowseOnly;
+
     internal static WindowsUpdateCandidate Map(IUpdate update)
     {
+        if (!IsInstallable(update))
+        {
+            throw new InvalidOperationException("Windows Update returned a browse-only update that cannot be installed.");
+        }
+
         var identity = update.Identity;
         var autoSelection = update is IUpdate5 update5
             ? (int)update5.AutoSelection
@@ -157,6 +165,11 @@ internal static class WuaSearchExecutor
             for (var i = 0; i < updates.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (!WuaUpdateMapper.IsInstallable(updates[i]))
+                {
+                    continue;
+                }
+
                 candidates.Add(WuaUpdateMapper.Map(updates[i]));
             }
 
@@ -202,7 +215,15 @@ internal static class WuaSearchExecutor
                 return null;
             }
 
-            var candidate = WuaUpdateMapper.Map(searchResult.Updates[0]);
+            var update = searchResult.Updates[0];
+            if (!WuaUpdateMapper.IsInstallable(update))
+            {
+                Marshal.ReleaseComObject(searchResult);
+                Marshal.ReleaseComObject(searcher);
+                return null;
+            }
+
+            var candidate = WuaUpdateMapper.Map(update);
 
             Marshal.ReleaseComObject(searchResult);
             Marshal.ReleaseComObject(searcher);
@@ -246,6 +267,13 @@ internal static class WuaSearchExecutor
             }
 
             var update = searchResult.Updates[0];
+            if (!WuaUpdateMapper.IsInstallable(update))
+            {
+                Marshal.ReleaseComObject(searchResult);
+                Marshal.ReleaseComObject(searcher);
+                return null;
+            }
+
             var candidate = WuaUpdateMapper.Map(update);
             var details = WuaUpdateMapper.MapDetails(update, candidate);
 

@@ -18,8 +18,18 @@
     <ProjectReference Include="..\..\src\Tortoise.Broker\Tortoise.Broker.csproj" />
     <ProjectReference Include="..\..\src\Tortoise.Contracts\Tortoise.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Tortoise.Core\Tortoise.Core.csproj" />
+    <ProjectReference Include="..\..\src\Tortoise.LabBroker\Tortoise.LabBroker.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
     <ProjectReference Include="..\..\src\Tortoise.Security\Tortoise.Security.csproj" />
   </ItemGroup>
+
+  <Target Name="CopyLabBrokerForTests" AfterTargets="Build">
+    <ItemGroup>
+      <LabBrokerFiles Include="..\..\src\Tortoise.LabBroker\bin\$(Configuration)\$(TargetFramework)\tortoise-lab-broker.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(LabBrokerFiles)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <Using Include="Xunit" />

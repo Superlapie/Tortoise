@@ -19,6 +19,7 @@ public enum BrokerErrorCode
     MutationDisabled = 6,
     InternalError = 7,
     UnauthorizedClient = 8,
+    ClientProcessMismatch = 9,
 }
 
 public static class ElevationConstants

@@ -24,6 +24,8 @@ public sealed class LabElevatedBrokerLauncher : ILabElevatedBrokerLauncher
             throw new InvalidOperationException(validationError ?? "Broker database path is invalid.");
         }
 
+        LabAuthoritativeStoreGuard.EnsureProtectedStoreReady(databasePath!);
+
         var hostOptions = new BrokerHostOptions
         {
             SessionId = options.SessionId,
@@ -33,6 +35,7 @@ public sealed class LabElevatedBrokerLauncher : ILabElevatedBrokerLauncher
             AllowDriverInstall = true,
             InstallOnlyMode = true,
             DatabasePath = databasePath,
+            AuthorizedClientProcessId = options.AuthorizedClientProcessId ?? Environment.ProcessId,
         };
 
         if (!BrokerElevationLauncher.TryLaunchElevatedBroker(hostOptions, out var launchError))

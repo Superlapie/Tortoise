@@ -6,4 +6,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tortoise.Core.Tests" />
+    <InternalsVisibleTo Include="Tortoise.Broker.Tests" />
+    <InternalsVisibleTo Include="Tortoise.Security.Tests" />
+    <InternalsVisibleTo Include="Tortoise.IntegrationTests" />
+    <InternalsVisibleTo Include="Tortoise.WindowsUpdate.Tests" />
+  </ItemGroup>
+
 </Project>
