@@ -35,7 +35,7 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 - CI workflows and ADRs
 - Initial commit
 
-### Batch 1 — Domain foundation ✅ (current)
+### Batch 1 — Domain foundation ✅
 
 - Domain models (`DeviceIdentity`, `DriverPackage`, `UpdatePlan`, etc.)
 - Error model and update classifications
@@ -43,7 +43,7 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 - Policy engine interfaces and default policies
 - Unit tests
 
-### Batch 2 — Windows device inventory
+### Batch 2 — Windows device inventory ✅ (current)
 
 - ConfigMgr/SetupAPI wrappers
 - Device enumeration, hardware IDs, health/problem codes

@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Batch 1 domain foundation: device/driver/update models, transaction state machine, error model, policy interfaces, and unit tests
+- Batch 2 Windows device inventory with ConfigMgr/SetupAPI interop
+- `IDeviceInventoryProvider`, health/problem mapping, and `tortoise scan` CLI
+- Windows read-only integration tests for device enumeration
 
 ## [0.1.0-alpha] - TBD
 
