@@ -10,6 +10,24 @@ internal enum ServerSelection
     Others = 3,
 }
 
+internal enum OperationResultCode
+{
+    NotStarted = 0,
+    InProgress = 1,
+    Succeeded = 2,
+    SucceededWithErrors = 3,
+    Failed = 4,
+    Aborted = 5,
+}
+
+internal enum AutoSelectionMode
+{
+    LetWindowsUpdateDecide = 0,
+    AutoSelectIfDownloaded = 1,
+    NeverAutoSelect = 2,
+    AlwaysAutoSelect = 3,
+}
+
 [ComImport]
 [Guid("4CB43D7F-7EEE-4906-8698-60DA1C38F2FE")]
 [CoClass(typeof(UpdateSessionClass))]
@@ -28,167 +46,150 @@ internal class UpdateSessionClass
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdateSession
 {
-    [DispId(1610596874)]
+    [DispId(0x60020001)]
     string ClientApplicationID { get; set; }
 
     [return: MarshalAs(UnmanagedType.IDispatch)]
     object CreateUpdateSearcher();
 
     [return: MarshalAs(UnmanagedType.IDispatch)]
-    object CreateUpdateDownloader();
-
-    [return: MarshalAs(UnmanagedType.IDispatch)]
     object CreateUpdateInstaller();
 }
 
 [ComImport]
-[Guid("562933AD-C0A5-421B-B64D-563F7F564531")]
+[Guid("8F45ABF1-F9AE-4B95-A933-F0F66E5056EA")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdateSearcher
 {
-    [return: MarshalAs(UnmanagedType.IDispatch)]
-    object Search([In][MarshalAs(UnmanagedType.BStr)] string criteria);
-
-    [DispId(1610596874)]
+    [DispId(0x60020007)]
     ServerSelection ServerSelection { get; set; }
+
+    [return: MarshalAs(UnmanagedType.Interface)]
+    ISearchResult Search([In][MarshalAs(UnmanagedType.BStr)] string criteria);
 }
 
 [ComImport]
-[Guid("136EBBC0-E36A-11D2-8716-00A0C9082637")]
+[Guid("D40CFF62-E08C-4498-941A-01E25F0FD33C")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface ISearchResult
 {
-    [DispId(1610743810)]
-    IUpdateCollection Updates { get; }
+    [DispId(0x60020001)]
+    OperationResultCode ResultCode { get; }
 
-    [DispId(1610743811)]
-    int ResultCode { get; }
+    [DispId(0x60020003)]
+    IUpdateCollection Updates { get; }
 }
 
 [ComImport]
-[Guid("7A564898-484E-4A52-8E60-5D82ACF3A9FF")]
+[Guid("13639463-00DB-4646-803D-528026140D88")]
 [CoClass(typeof(UpdateCollectionClass))]
 internal interface UpdateCollection : IUpdateCollection
 {
 }
 
 [ComImport]
-[Guid("7A564898-484E-4A52-8E60-5D82ACF3A9FF")]
+[Guid("13639463-00DB-4646-803D-528026140D88")]
 internal class UpdateCollectionClass
 {
 }
 
 [ComImport]
-[Guid("EA04EEE1-21A1-4565-924D-E6259DAB7274")]
+[Guid("07F7438C-7709-4CA5-B518-91279288134E")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdateCollection
 {
-    [DispId(1610743810)]
+    [DispId(0x60020001)]
     int Count { get; }
 
     [DispId(0)]
-    IUpdate this[[In][MarshalAs(UnmanagedType.Struct)] int index] { get; }
+    IUpdate this[[In] int index] { get; }
 
-    [DispId(1610743812)]
-    void Add([In][MarshalAs(UnmanagedType.IDispatch)] IUpdate update);
+    [DispId(0x60020003)]
+    void Add([In] IUpdate update);
 }
 
 [ComImport]
-[Guid("EAA92B83-22F3-4F38-B30F-1FDB84EFCC4F")]
+[Guid("6A92B07A-D821-4682-B423-5C805022CC4D")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdate
 {
-    [DispId(1610743810)]
-    IUpdateIdentity Identity { get; }
-
-    [DispId(1610743811)]
+    [DispId(0)]
     string Title { get; }
 
-    [DispId(1610743812)]
-    string Description { get; }
-
-    [DispId(1610743818)]
-    bool IsHidden { get; }
-
-    [DispId(1610743819)]
-    bool IsInstalled { get; }
-
-    [DispId(1610743820)]
-    bool RebootRequired { get; }
-
-    [DispId(1610743821)]
-    string DriverModel { get; }
-
-    [DispId(1610743822)]
-    string DriverManufacturer { get; }
-
-    [DispId(1610743823)]
+    [DispId(0x60020004)]
     ICategoryCollection Categories { get; }
 
-    [DispId(1610743824)]
+    [DispId(0x60020008)]
+    string Description { get; }
+
+    [DispId(0x60020009)]
     bool EulaAccepted { get; }
 
-    [DispId(1610743825)]
-    string MoreInfoUrl { get; }
+    [DispId(0x6002000C)]
+    IUpdateIdentity Identity { get; }
 
-    [DispId(1610743826)]
+    [DispId(0x60020011)]
+    bool IsHidden { get; }
+
+    [DispId(0x60020012)]
+    bool IsInstalled { get; }
+
+    [DispId(0x60020022)]
     string SupportUrl { get; }
 }
 
 [ComImport]
-[Guid("5A838388-66C7-497D-8798-99D48588471A")]
+[Guid("144FE9B0-D23D-4A8B-8634-FB4457533B7A")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdate2 : IUpdate
 {
-    [DispId(1610743830)]
-    int AutoSelection { get; }
+    [DispId(0x60030001)]
+    bool RebootRequired { get; }
 }
 
 [ComImport]
-[Guid("25E74697-82DB-4A09-AB3C-0CA5D5D9016B")]
+[Guid("C1C2F21A-D2F4-4902-B5C6-8A081C19A890")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdate5 : IUpdate2
 {
+    [DispId(0x60060001)]
+    AutoSelectionMode AutoSelection { get; }
 }
 
 [ComImport]
-[Guid("B49426D1-248E-4C4B-9ADC-D3B647660190")]
+[Guid("B383CD1A-5CE9-4504-9F63-764B1236F191")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
-internal interface IWindowsDriverUpdate : IUpdate2
+internal interface IWindowsDriverUpdate : IUpdate
 {
-    [DispId(1610743840)]
-    string DriverHardwareID { get; }
-
-    [DispId(1610743841)]
+    [DispId(0x60030001)]
     string DriverClass { get; }
 
-    [DispId(1610743842)]
+    [DispId(0x60030002)]
+    string DriverHardwareID { get; }
+
+    [DispId(0x60030003)]
+    string DriverManufacturer { get; }
+
+    [DispId(0x60030004)]
+    string DriverModel { get; }
+
+    [DispId(0x60030005)]
     string DriverProvider { get; }
 
-    [DispId(1610743843)]
+    [DispId(0x60030006)]
     DateTime DriverVerDate { get; }
-
-    [DispId(1610743844)]
-    int DeviceProblemNumber { get; }
 }
 
 [ComImport]
-[Guid("C3AB67EF-D8E3-455F-98F6-06B80F70CC7C")]
-[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
-internal interface IWindowsDriverUpdate5 : IWindowsDriverUpdate
-{
-}
-
-[ComImport]
-[Guid("67614681-9F1B-4192-93AF-0E0BD4D0C4F2")]
+[Guid("46297823-9940-4C09-AED9-CD3EA6D05968")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdateIdentity
 {
-    [DispId(1610743810)]
-    string UpdateID { get; }
-
-    [DispId(1610743811)]
+    [DispId(0x60020002)]
     int RevisionNumber { get; }
+
+    [DispId(0x60020003)]
+    string UpdateID { get; }
 }
 
 [ComImport]
@@ -196,11 +197,11 @@ internal interface IUpdateIdentity
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface ICategoryCollection
 {
-    [DispId(1610743810)]
+    [DispId(0x60020001)]
     int Count { get; }
 
     [DispId(0)]
-    ICategory this[[In][MarshalAs(UnmanagedType.Struct)] int index] { get; }
+    ICategory this[[In] int index] { get; }
 }
 
 [ComImport]
@@ -208,33 +209,48 @@ internal interface ICategoryCollection
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface ICategory
 {
-    [DispId(1610743810)]
+    [DispId(0x60020001)]
     string Name { get; }
 
-    [DispId(1610743811)]
+    [DispId(0x60020002)]
     string CategoryID { get; }
 }
 
 [ComImport]
-[Guid("7B905F35-12DE-4CEC-ADFB-B9AED56552FA")]
+[Guid("7B929C68-CCDC-4226-96B1-8724600B54C2")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdateInstaller
 {
-    [DispId(1610743810)]
+    [DispId(0x60020005)]
     IUpdateCollection Updates { get; set; }
 
-    [DispId(1610743811)]
-    bool ForceQuiet { get; set; }
+    [DispId(0x6002000F)]
+    bool RebootRequiredBeforeInstallation { get; }
 
-    [DispId(1610743812)]
-    int Install();
+    [return: MarshalAs(UnmanagedType.Interface)]
+    IInstallationResult Install();
 }
 
 [ComImport]
-[Guid("1444FDEF-9B72-4BEA-B1AC-36A77A3C5240")]
+[Guid("3442D4FE-224D-4CEE-98CF-30E0C4D229E6")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdateInstaller2 : IUpdateInstaller
 {
-    [DispId(1610743814)]
-    bool RebootRequiredBeforeInstallation { get; }
+    [DispId(0x60030001)]
+    bool ForceQuiet { get; set; }
+}
+
+[ComImport]
+[Guid("A43C56D6-7451-48D4-AF96-B6CD2D0D9B7A")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IInstallationResult
+{
+    [DispId(0x60020001)]
+    int HResult { get; }
+
+    [DispId(0x60020002)]
+    bool RebootRequired { get; }
+
+    [DispId(0x60020003)]
+    OperationResultCode ResultCode { get; }
 }

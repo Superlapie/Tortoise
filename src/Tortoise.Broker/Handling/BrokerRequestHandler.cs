@@ -1,11 +1,16 @@
 using System.Reflection;
 using System.Text.Json;
 using Tortoise.Broker.Ipc;
+using Tortoise.Broker.Validation;
 using Tortoise.Contracts.Elevation;
 using Tortoise.Contracts.Mutation;
+using Tortoise.Core.Devices;
 using Tortoise.Core.Installation;
 using Tortoise.Core.Mutation;
+using Tortoise.Core.Updates;
 using Tortoise.Security.Broker;
+using Tortoise.Windows.Devices;
+using Tortoise.WindowsUpdate;
 
 namespace Tortoise.Broker.Handling;
 
@@ -15,6 +20,7 @@ public sealed class BrokerRequestHandler
     private readonly IExecutionEnvironmentDetector _environmentDetector;
     private readonly IBrokerPlanAuthority _planAuthority;
     private readonly IWindowsUpdateDriverInstallService? _installService;
+    private readonly IDeviceInventoryProvider? _deviceInventoryProvider;
     private readonly BrokerRequestValidator _validator;
     private readonly BrokerReplayGuard _replayGuard = new();
     private readonly string _brokerVersion =
@@ -24,12 +30,14 @@ public sealed class BrokerRequestHandler
         BrokerHostOptions options,
         IExecutionEnvironmentDetector environmentDetector,
         IBrokerPlanAuthority planAuthority,
-        IWindowsUpdateDriverInstallService? installService = null)
+        IWindowsUpdateDriverInstallService? installService = null,
+        IDeviceInventoryProvider? deviceInventoryProvider = null)
     {
         _options = options;
         _environmentDetector = environmentDetector;
         _planAuthority = planAuthority;
         _installService = installService;
+        _deviceInventoryProvider = deviceInventoryProvider;
         _validator = new BrokerRequestValidator(options.CapabilityToken);
     }
 
@@ -147,13 +155,48 @@ public sealed class BrokerRequestHandler
             payload,
             cancellationToken);
 
-        if (!authority.IsAuthorized)
+        if (!authority.IsAuthorized || authority.StoredPlan is null)
         {
             return new BrokerResponse(
                 request.RequestId,
                 false,
                 BrokerErrorCode.PlanValidationFailed,
                 authority.Message);
+        }
+
+        DeviceInventoryEntry? liveDevice = null;
+        WindowsUpdateCandidate? liveCandidate = null;
+        if (OperatingSystem.IsWindows() && _deviceInventoryProvider is not null)
+        {
+            var inventory = await _deviceInventoryProvider.ScanAsync(cancellationToken);
+            liveDevice = inventory.Devices.SingleOrDefault(device =>
+                string.Equals(
+                    device.Snapshot.Identity.DeviceInstanceId,
+                    authority.StoredPlan.Plan.DeviceSnapshot.Identity.DeviceInstanceId,
+                    StringComparison.OrdinalIgnoreCase));
+
+            liveCandidate = WuaLiveVerification.TryGetCandidate(
+                payload.UpdateId,
+                payload.Revision,
+                cancellationToken);
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            var toctou = BrokerInstallToctouGuard.VerifyInstallBoundary(
+                authority.StoredPlan,
+                payload,
+                liveDevice,
+                liveCandidate);
+
+            if (!toctou.IsAuthorized)
+            {
+                return new BrokerResponse(
+                    request.RequestId,
+                    false,
+                    BrokerErrorCode.PlanValidationFailed,
+                    toctou.Message);
+            }
         }
 
         var installResult = await _installService.InstallAsync(

@@ -9,6 +9,11 @@ internal static class UpdateApplicabilityMatcher
 
     internal static int Score(DeviceInventoryEntry device, WindowsUpdateCandidate update)
     {
+        if (HardwareIdMatches(device, update))
+        {
+            return 10;
+        }
+
         var identity = device.Snapshot.Identity;
         var score = 0;
 
@@ -20,11 +25,6 @@ internal static class UpdateApplicabilityMatcher
         if (ManufacturerMatches(identity.Manufacturer, device.InstalledDriver?.ProviderName, update.DriverManufacturer))
         {
             score += 2;
-        }
-
-        if (HardwareIdMatches(identity.HardwareIds, update.Title, update.Description))
-        {
-            score += 6;
         }
 
         if (ModelMatches(update.DriverModel, identity.FriendlyName, update.Title))
@@ -42,14 +42,19 @@ internal static class UpdateApplicabilityMatcher
 
     internal static bool HasStrongMatch(DeviceInventoryEntry device, WindowsUpdateCandidate update, int score)
     {
-        if (score < MinimumMatchScore)
+        if (HardwareIdMatches(device, update))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(update.DriverHardwareId))
         {
             return false;
         }
 
-        if (HardwareIdMatches(device.Snapshot.Identity.HardwareIds, update.Title, update.Description))
+        if (score < MinimumMatchScore)
         {
-            return true;
+            return false;
         }
 
         if (IsFirmwareRelated(device, update) && score >= MinimumMatchScore)
@@ -58,6 +63,18 @@ internal static class UpdateApplicabilityMatcher
         }
 
         return score >= MinimumMatchScore + 4;
+    }
+
+    internal static bool HardwareIdMatches(DeviceInventoryEntry device, WindowsUpdateCandidate update)
+    {
+        if (string.IsNullOrWhiteSpace(update.DriverHardwareId))
+        {
+            return false;
+        }
+
+        var identity = device.Snapshot.Identity;
+        return ContainsHardwareId(update.DriverHardwareId, identity.HardwareIds)
+               || ContainsHardwareId(update.DriverHardwareId, identity.CompatibleIds);
     }
 
     internal static bool IsFirmwareRelated(DeviceInventoryEntry device, WindowsUpdateCandidate update)
@@ -76,6 +93,24 @@ internal static class UpdateApplicabilityMatcher
 
         return ContainsAny(update.Title, "firmware", "uefi", "bios")
                || ContainsAny(update.Description, "firmware", "uefi", "bios");
+    }
+
+    private static bool ContainsHardwareId(string driverHardwareId, IReadOnlyList<string> deviceIds)
+    {
+        foreach (var deviceId in deviceIds)
+        {
+            if (string.IsNullOrWhiteSpace(deviceId))
+            {
+                continue;
+            }
+
+            if (string.Equals(driverHardwareId, deviceId, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool ClassMatches(string deviceClass, WindowsUpdateCandidate update)
@@ -120,27 +155,6 @@ internal static class UpdateApplicabilityMatcher
 
         return left.Contains(right, StringComparison.OrdinalIgnoreCase)
                || right.Contains(left, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool HardwareIdMatches(
-        IReadOnlyList<string> hardwareIds,
-        string? title,
-        string? description)
-    {
-        if (hardwareIds.Count == 0)
-        {
-            return false;
-        }
-
-        var haystack = $"{title}\n{description}";
-        if (string.IsNullOrWhiteSpace(haystack))
-        {
-            return false;
-        }
-
-        return hardwareIds.Any(id =>
-            !string.IsNullOrWhiteSpace(id)
-            && haystack.Contains(id, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool ModelMatches(string? driverModel, string friendlyName, string title)

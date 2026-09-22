@@ -24,7 +24,7 @@ internal static class WuaInstallExecutor
             ISearchResult searchResult;
             try
             {
-                searchResult = (ISearchResult)searcher.Search(criteria);
+                searchResult = searcher.Search(criteria);
             }
             catch (COMException ex)
             {
@@ -42,7 +42,7 @@ internal static class WuaInstallExecutor
                 Marshal.ReleaseComObject(searcher);
                 return new WindowsUpdateInstallResult(
                     false,
-                    ResultCode: 4,
+                    ResultCode: (int)OperationResultCode.Failed,
                     RebootRequired: false,
                     "Windows Update did not return the requested driver package.");
             }
@@ -52,12 +52,16 @@ internal static class WuaInstallExecutor
             var collection = new UpdateCollection();
             collection.Add(update);
             installer.Updates = collection;
-            installer.ForceQuiet = true;
 
-            int resultCode;
+            if (installer is IUpdateInstaller2 installer2)
+            {
+                installer2.ForceQuiet = true;
+            }
+
+            IInstallationResult installationResult;
             try
             {
-                resultCode = installer.Install();
+                installationResult = installer.Install();
             }
             catch (COMException ex)
             {
@@ -69,17 +73,20 @@ internal static class WuaInstallExecutor
                     ex);
             }
 
-            var rebootRequired = update.RebootRequired;
-            if (installer is IUpdateInstaller2 installer2)
+            var resultCode = (int)installationResult.ResultCode;
+            var rebootRequired = installationResult.RebootRequired || installer.RebootRequiredBeforeInstallation;
+            if (update is IUpdate2 update2)
             {
-                rebootRequired |= installer2.RebootRequiredBeforeInstallation;
+                rebootRequired |= update2.RebootRequired;
             }
 
-            var succeeded = resultCode is 2 or 3;
+            var succeeded = installationResult.ResultCode is OperationResultCode.Succeeded
+                or OperationResultCode.SucceededWithErrors;
             var message = succeeded
                 ? "Windows Update reported that driver installation completed."
-                : $"Windows Update install returned result code {resultCode.ToString(CultureInfo.InvariantCulture)}.";
+                : $"Windows Update install returned result code {resultCode.ToString(CultureInfo.InvariantCulture)} (HRESULT 0x{installationResult.HResult:X8}).";
 
+            Marshal.ReleaseComObject(installationResult);
             Marshal.ReleaseComObject(collection);
             Marshal.ReleaseComObject(installer);
             Marshal.ReleaseComObject(update);

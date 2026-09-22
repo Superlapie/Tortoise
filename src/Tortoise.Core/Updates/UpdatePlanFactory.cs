@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Tortoise.Core.Devices;
 using Tortoise.Core.Drivers;
 using Tortoise.Core.Updates;
@@ -8,6 +9,12 @@ namespace Tortoise.Core.Updates;
 
 public static class UpdatePlanFactory
 {
+    private static readonly JsonSerializerOptions CanonicalJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false,
+    };
+
     public static UpdatePlan Create(
         DeviceSnapshot deviceSnapshot,
         InstalledDriver currentDriver,
@@ -51,26 +58,46 @@ public static class UpdatePlanFactory
         DriverRiskLevel riskLevel)
     {
         var candidate = proposedUpdate.Candidate;
-        var payload = string.Join('|',
+        var payload = new UpdatePlanCanonicalPayload(
             planId,
             deviceSnapshot.Identity.DeviceInstanceId,
-            string.Join(',', deviceSnapshot.Identity.HardwareIds),
+            deviceSnapshot.Identity.HardwareIds.ToArray(),
+            deviceSnapshot.Identity.CompatibleIds.ToArray(),
             deviceSnapshot.Identity.ClassGuid,
             currentDriver.Package.Identity.ProviderName,
             currentDriver.Package.Identity.PublishedInfName,
-            currentDriver.Package.Identity.DriverVersion,
+            currentDriver.Package.Identity.DriverVersion.ToString(),
             candidate.UpdateIdentity,
-            candidate.UpdateRevision.ToString(),
-            proposedUpdate.Classification,
+            candidate.UpdateRevision,
+            proposedUpdate.Classification.ToString(),
             proposedUpdate.RequiresEula,
             proposedUpdate.RestartRequired,
-            classification,
-            riskLevel,
+            classification.ToString(),
+            riskLevel.ToString(),
             safetyPolicyVersion);
 
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(payload));
+        var json = JsonSerializer.Serialize(payload, CanonicalJsonOptions);
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(json));
         return Convert.ToHexString(hash);
     }
+
+    private sealed record UpdatePlanCanonicalPayload(
+        Guid PlanId,
+        string DeviceInstanceId,
+        string[] HardwareIds,
+        string[] CompatibleIds,
+        Guid ClassGuid,
+        string CurrentProviderName,
+        string CurrentPublishedInfName,
+        string CurrentDriverVersion,
+        string CandidateUpdateId,
+        int CandidateUpdateRevision,
+        string ProposedClassification,
+        bool RequiresEula,
+        bool RestartRequired,
+        string StoredClassification,
+        string RiskLevel,
+        string SafetyPolicyVersion);
 }
 
 public static class StalePlanDetector

@@ -28,6 +28,7 @@ public sealed class UpdatePlanBuilder : IUpdatePlanBuilder
 
             if (recommendation.ApplicableUpdate is null
                 || recommendation.Classification is UpdateClassification.Current
+                || recommendation.Classification is UpdateClassification.Unknown
                 || recommendation.Classification is UpdateClassification.Restricted)
             {
                 continue;
@@ -98,8 +99,12 @@ internal static class RecommendationPlanMapper
                 null,
                 null,
                 identity.DeviceInstanceId),
-            new DriverSignature(true, true, binding.ProviderName, null),
-            new DriverSource(DriverSourceKind.WindowsUpdate, "installed", "Installed driver", true));
+            new DriverSignature(false, false, binding.ProviderName, null),
+            new DriverSource(
+                DriverSourceKind.Unknown,
+                "installed",
+                "Installed driver (provenance unverified)",
+                false));
 
         return new InstalledDriver(package, identity.DeviceInstanceId, null);
     }
@@ -124,8 +129,12 @@ internal static class RecommendationPlanMapper
                     null,
                     update.UpdateId,
                     update.DriverModel),
-                new DriverSignature(true, true, update.DriverManufacturer, null),
-                new DriverSource(DriverSourceKind.WindowsUpdate, "windows-update", "Windows Update", true)),
+                new DriverSignature(false, false, update.DriverManufacturer, null),
+                new DriverSource(
+                    DriverSourceKind.WindowsUpdate,
+                    update.UpdateId,
+                    "Windows Update (signature not yet verified)",
+                    false)),
             device.Snapshot.Identity.DeviceInstanceId,
             update.UpdateId,
             update.Revision);

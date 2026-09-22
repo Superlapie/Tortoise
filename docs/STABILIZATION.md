@@ -1,54 +1,57 @@
 # Stabilization and Batch 15
 
-This document summarizes the audit remediation work applied after Batch 14.
+This document tracks audit remediation after Batch 14. The accurate status is: **substantial progress, not complete**.
 
 ## Phase 0 — Safety lockdown
 
 - Removed `TORTOISE_VM_MARKER` as disposable-VM evidence
-- Real mutation is structurally disabled in public `tortoise` / WPF builds via `MutationBuildPolicy`
+- Real mutation blocked in public `tortoise` / WPF builds via runtime `MutationBuildPolicy`
 - Added `Tortoise.Lab` (`tortoise-lab`) for isolated VM mutation testing only
 - Physical pilot confirmation remains non-mutating (readiness recording only)
 - Added `MutationServicingLock` to prevent concurrent real servicing
 
-## Phase 1 — Windows interop and WUA rebuild
+**Still open:** compile-time isolation (`Tortoise.MutationLab` split) so public binaries cannot reference real mutation code at all.
 
-- Fixed `CM_Get_Device_ID_ListW` sizing via `CM_Get_Device_ID_List_SizeW`
-- Fixed `SetupDiCreateDeviceInfoList` signature (`GUID*, HWND`)
-- Corrected DEVPKEY driver provider/version/date/INF property set
-- Replaced WUA COM GUIDs/interfaces with Microsoft-documented values
-- Fixed zero-based WUA collection indexing
-- Added `IWindowsDriverUpdate` mapping (hardware ID, provider, driver date)
-- Enabled SQLite `PRAGMA foreign_keys = ON`
-- Fixed persistence test DB cleanup (`SqliteConnection.ClearAllPools`)
+## Phase 1 — Windows interop and WUA
+
+- Fixed ConfigMgr sizing and SetupAPI signatures
+- Corrected DEVPKEY driver property set
+- Rebuilt WUA COM layer from Microsoft `wuapi.idl` GUIDs and dispids
+- `IUpdateInstaller.Install()` now returns `IInstallationResult` (not `int`)
+- Driver-only properties read from `IWindowsDriverUpdate`, not base `IUpdate`
+- `AutoSelection` read from `IUpdate5` with corrected mapping (3=Recommended, 2=Optional)
+- Authoritative device matching uses WUA `DriverHardwareID` vs device hardware/compatible IDs
+- Unmapped driver scan results produce `Unknown` device state (fail-closed), not `Current`
+- Signature/source provenance no longer fabricated as trusted Windows Update
+
+**Still open:** Windows CI verification of COM interop on real `windows-latest` runners.
 
 ## Phase 2 — Broker trust
 
 - Broker protocol v2 with capability token and Windows session binding
-- Restricted named-pipe ACL (current user only on Windows)
+- Named-pipe ACL (current user only on Windows)
 - `BrokerPlanAuthority` reloads persisted plans and validates canonical hash + install payload
-- EULA-required plans blocked at broker authority layer
+- Elevated broker launch via UAC (`BrokerElevationLauncher`) wired into `tortoise-lab vm install`
+- Broker TOCTOU guard re-checks device presence, installed driver version, live WUA candidate, hardware ID, and classification before install (Windows broker host)
 
-## Phase 3 — Plan integrity and recovery gates
+**Still open:** `%ProgramData%` plan store ACL / cryptographic sealing; pending reboot gate at broker boundary.
 
-- Canonical plan hash covers device identity, hardware IDs, candidate identity, classification, risk, restart/EULA
-- Physical pilot recovery preparation stale after 24h is blocked
-- Failed export + disabled System Restore is now a blocker (not a warning)
+## Phase 3 — Plan integrity and recovery
 
-## Phase 4 — CI, tests, and release engineering (Batch 15)
+- Canonical plan hash uses deterministic JSON (not delimiter-joined strings)
+- Frozen plans reject overwrite (`INSERT ... ON CONFLICT ... WHERE is_frozen = 0`)
+- Physical pilot checklist uses readiness-only preflight (mutation authorization evaluated separately)
+- Recovery preparation stale after 24h remains blocked
 
-- CodeQL runs after explicit `dotnet build`
-- Empty Security/Integration test projects now fail CI (`FailWhenNoTestsFound=true`)
-- Added Security and Integration test suites
-- Release workflow: validate job, semver from tag, SBOM JSON, SHA-256 manifest, attestation hook, pinned Actions
-- Protected release environment placeholder (`environment: release`)
+## Phase 4 / Batch 15 — CI, tests, release
 
-## Still intentionally deferred
+- Fixed invalid GitHub Actions SHA pins (verified 40-character commit IDs from tagged releases)
+- Release validation runs on **both** `ubuntu-latest` and `windows-latest`
+- Prerelease tags use numeric `AssemblyVersion`/`FileVersion`; full tag in `InformationalVersion`
+- Package inventory exported as `dependencies.json` (not SPDX/CycloneDX SBOM)
+- Real VM install path now writes durable transaction journal entries via `IUpdateTransactionStore`
 
-- Real driver package export (export service remains disabled in public builds)
-- Full durable transaction journal wrapping for VM install (simulated path retains journal)
-- AC/battery preflight gate
-- Signed release binaries (signing hook scaffold only via attestation workflow)
-- GitHub branch protection (repository setting)
+**Still open:** signed release binaries, branch protection, clean-VM release smoke test, real package export.
 
 ## Usage
 
@@ -67,4 +70,4 @@ TORTOISE_ALLOW_VM_INSTALL=1
 tortoise-lab vm install <plan-id>
 ```
 
-Do **not** run `tortoise-lab` on a physical production machine.
+Do **not** run real mutation on a physical production machine.

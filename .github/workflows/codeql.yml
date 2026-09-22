@@ -16,13 +16,13 @@ jobs:
       actions: read
       contents: read
     steps:
-      - uses: actions/checkout@11bd71901bbe5b16344ceabd3597fab798d83d2f
-      - uses: actions/setup-dotnet@3fad03288982e6044aafaa77577593a74
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
           dotnet-version: '10.0.x'
-      - uses: github/codeql-action/init@3a5d6a35aed3f1e2fe4de8ebacd03e17e8fc29f6
+      - uses: github/codeql-action/init@ed1a0fa18ac745d017ca370dd4ef08bba3b4f504
         with:
           languages: csharp
       - name: Build solution for CodeQL
         run: dotnet build Tortoise.slnx -c Release
-      - uses: github/codeql-action/analyze@3a5d6a35aed3f1e2fe4de8ebacd03e17e8fc29f6
+      - uses: github/codeql-action/analyze@ed1a0fa18ac745d017ca370dd4ef08bba3b4f504

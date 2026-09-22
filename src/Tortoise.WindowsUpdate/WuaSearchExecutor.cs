@@ -11,20 +11,25 @@ internal static class WuaUpdateMapper
     internal static WindowsUpdateCandidate Map(IUpdate update)
     {
         var identity = update.Identity;
-        var autoSelection = update is IUpdate2 update2 ? update2.AutoSelection : 0;
+        var autoSelection = update is IUpdate5 update5
+            ? (int)update5.AutoSelection
+            : 0;
         var categories = ReadCategories(update.Categories);
         var driverClass = categories.FirstOrDefault(category =>
             category.Contains("driver", StringComparison.OrdinalIgnoreCase));
 
         string? driverHardwareId = null;
         string? driverProvider = null;
+        string? driverManufacturer = null;
+        string? driverModel = null;
         DateOnly? driverVerDate = null;
-        Version? driverVersion = null;
 
         if (update is IWindowsDriverUpdate driverUpdate)
         {
             driverHardwareId = NullIfEmpty(driverUpdate.DriverHardwareID);
             driverProvider = NullIfEmpty(driverUpdate.DriverProvider);
+            driverManufacturer = NullIfEmpty(driverUpdate.DriverManufacturer);
+            driverModel = NullIfEmpty(driverUpdate.DriverModel);
             driverClass = NullIfEmpty(driverUpdate.DriverClass) ?? driverClass;
 
             if (driverUpdate.DriverVerDate != default)
@@ -33,18 +38,20 @@ internal static class WuaUpdateMapper
             }
         }
 
+        var rebootRequired = update is IUpdate2 update2 && update2.RebootRequired;
+
         return new WindowsUpdateCandidate(
             identity.UpdateID,
             identity.RevisionNumber,
             update.Title,
             NullIfEmpty(update.Description),
-            NullIfEmpty(update.DriverManufacturer),
+            driverManufacturer,
             driverClass,
-            NullIfEmpty(update.DriverModel),
-            driverVersion,
+            driverModel,
+            null,
             driverVerDate,
             WindowsUpdateClassificationMapper.Classify(autoSelection, update.IsHidden, update.IsInstalled),
-            update.RebootRequired,
+            rebootRequired,
             RequiresEula(update),
             update.IsHidden,
             update.IsInstalled,
@@ -56,7 +63,7 @@ internal static class WuaUpdateMapper
     internal static WindowsUpdateCandidateDetails MapDetails(IUpdate update, WindowsUpdateCandidate candidate) =>
         new(
             candidate,
-            NullIfEmpty(update.MoreInfoUrl),
+            null,
             NullIfEmpty(update.SupportUrl),
             DateTimeOffset.UtcNow);
 
@@ -127,7 +134,7 @@ internal static class WuaSearchExecutor
             ISearchResult searchResult;
             try
             {
-                searchResult = (ISearchResult)searcher.Search(WindowsUpdateSearchCriteria.DriverUpdates);
+                searchResult = searcher.Search(WindowsUpdateSearchCriteria.DriverUpdates);
             }
             catch (COMException ex)
             {
@@ -142,10 +149,10 @@ internal static class WuaSearchExecutor
             cancellationToken.ThrowIfCancellationRequested();
 
             var warnings = new List<string>();
-            if (searchResult.ResultCode != 2)
+            if (searchResult.ResultCode != OperationResultCode.Succeeded)
             {
                 warnings.Add(
-                    $"Windows Update search completed with result code {searchResult.ResultCode.ToString(CultureInfo.InvariantCulture)}.");
+                    $"Windows Update search completed with result code {(int)searchResult.ResultCode}.");
             }
 
             var candidates = new List<WindowsUpdateCandidate>();
@@ -153,8 +160,7 @@ internal static class WuaSearchExecutor
             for (var i = 0; i < updates.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var update = updates[i];
-                candidates.Add(WuaUpdateMapper.Map(update));
+                candidates.Add(WuaUpdateMapper.Map(updates[i]));
             }
 
             Marshal.ReleaseComObject(searchResult);
@@ -165,6 +171,45 @@ internal static class WuaSearchExecutor
                 policy,
                 warnings,
                 DateTimeOffset.UtcNow);
+        });
+    }
+
+    internal static WindowsUpdateCandidate? TryGetCandidate(
+        string updateId,
+        int revision,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return WuaSessionRunner.Execute(session =>
+        {
+            var searcher = (IUpdateSearcher)session.CreateUpdateSearcher();
+            var criteria =
+                $"UpdateID='{updateId}' and RevisionNumber={revision.ToString(CultureInfo.InvariantCulture)}";
+
+            ISearchResult searchResult;
+            try
+            {
+                searchResult = searcher.Search(criteria);
+            }
+            catch (COMException)
+            {
+                Marshal.ReleaseComObject(searcher);
+                return null;
+            }
+
+            if (searchResult.Updates.Count == 0)
+            {
+                Marshal.ReleaseComObject(searchResult);
+                Marshal.ReleaseComObject(searcher);
+                return null;
+            }
+
+            var candidate = WuaUpdateMapper.Map(searchResult.Updates[0]);
+
+            Marshal.ReleaseComObject(searchResult);
+            Marshal.ReleaseComObject(searcher);
+            return candidate;
         });
     }
 
@@ -184,7 +229,7 @@ internal static class WuaSearchExecutor
             ISearchResult searchResult;
             try
             {
-                searchResult = (ISearchResult)searcher.Search(criteria);
+                searchResult = searcher.Search(criteria);
             }
             catch (COMException ex)
             {
@@ -211,5 +256,40 @@ internal static class WuaSearchExecutor
             Marshal.ReleaseComObject(searcher);
             return details;
         });
+    }
+}
+
+public static class WuaHardwareIdMatcher
+{
+    public static bool MatchesDevice(
+        WindowsUpdateCandidate candidate,
+        IReadOnlyList<string> hardwareIds,
+        IReadOnlyList<string> compatibleIds)
+    {
+        if (string.IsNullOrWhiteSpace(candidate.DriverHardwareId))
+        {
+            return false;
+        }
+
+        return ContainsId(candidate.DriverHardwareId, hardwareIds)
+               || ContainsId(candidate.DriverHardwareId, compatibleIds);
+    }
+
+    private static bool ContainsId(string driverHardwareId, IReadOnlyList<string> deviceIds)
+    {
+        foreach (var deviceId in deviceIds)
+        {
+            if (string.IsNullOrWhiteSpace(deviceId))
+            {
+                continue;
+            }
+
+            if (string.Equals(driverHardwareId, deviceId, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -232,7 +232,69 @@ public sealed class BrokerRequestHandlerTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(new BrokerPlanAuthorityResult(
                 _authorized,
-                _authorized ? "Authorized." : "Plan authority rejected the request."));
+                _authorized ? "Authorized." : "Plan authority rejected the request.",
+                _authorized ? CreateStoredPlan() : null));
+
+        private static StoredUpdatePlan CreateStoredPlan()
+        {
+            var builder = new UpdatePlanBuilder();
+            var device = new Tortoise.Core.Devices.DeviceInventoryEntry(
+                new Tortoise.Core.Devices.DeviceSnapshot(
+                    new Tortoise.Core.Devices.DeviceIdentity(
+                        "ROOT\\NET\\0001",
+                        null,
+                        Guid.NewGuid(),
+                        "Net",
+                        "Intel Adapter",
+                        "Intel",
+                        ["PCI\\VEN_8086&DEV_1234"],
+                        [],
+                        null,
+                        null,
+                        null,
+                        null,
+                        true),
+                    new Tortoise.Core.Devices.DeviceHealth(
+                        Tortoise.Core.Devices.DeviceHealthState.Healthy,
+                        null,
+                        null),
+                    DateTimeOffset.UtcNow),
+                new Tortoise.Core.Devices.DeviceDriverBinding("Intel", new Version(1, 0), null, "intel.inf"));
+
+            var recommendation = new Tortoise.Core.Recommendations.DeviceUpdateRecommendation(
+                device,
+                new WindowsUpdateCandidate(
+                    "update-id",
+                    1,
+                    "Intel Network Driver",
+                    null,
+                    "Intel",
+                    "Net",
+                    "Intel Adapter",
+                    new Version(2, 0),
+                    null,
+                    UpdateClassification.WindowsRecommended,
+                    false,
+                    false,
+                    false,
+                    false,
+                    [],
+                    "PCI\\VEN_8086&DEV_1234"),
+                UpdateClassification.WindowsRecommended,
+                DriverRiskLevel.Low,
+                "Recommended by Windows",
+                "Explanation",
+                DateTimeOffset.UtcNow);
+
+            var scanResult = new Tortoise.Core.Recommendations.RecommendationScanResult(
+                [recommendation],
+                [],
+                new WindowsUpdatePolicyInfo(false, "Windows Update", "Update source: Windows Update."),
+                [],
+                DateTimeOffset.UtcNow);
+
+            return builder.BuildPlans(scanResult, new UpdatePlanningOptions()).Single();
+        }
     }
 }
 

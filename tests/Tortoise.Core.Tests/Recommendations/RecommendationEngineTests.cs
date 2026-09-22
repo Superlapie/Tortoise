@@ -10,7 +10,7 @@ public sealed class RecommendationEngineTests
     private readonly RecommendationEngine _engine = new();
 
     [Fact]
-    public void Evaluate_marks_device_without_match_as_current()
+    public void Evaluate_marks_device_without_match_as_current_when_scan_is_empty()
     {
         var devices = new[] { CreateDevice("ROOT\\NET\\0001", "Net", "Intel", ["PCI\\VEN_8086"]) };
         var updateScan = CreateUpdateScan([]);
@@ -37,13 +37,13 @@ public sealed class RecommendationEngineTests
             "Intel Net Driver",
             "Intel",
             "Net",
-            driverModel: "Intel Network Adapter");
+            driverHardwareId: "PCI\\VEN_10EC&DEV_9999");
         var exactUpdate = CreateUpdate(
             "exact-id",
-            "Intel Driver for PCI\\VEN_8086&DEV_1234",
+            "Intel Driver",
             "Intel",
             "Net",
-            driverModel: "Intel Network Adapter");
+            driverHardwareId: "PCI\\VEN_8086&DEV_1234");
 
         var updateScan = CreateUpdateScan([genericUpdate, exactUpdate]);
         var result = _engine.Evaluate(devices, updateScan);
@@ -54,11 +54,11 @@ public sealed class RecommendationEngineTests
             recommendation.Device.Snapshot.Identity.DeviceInstanceId == "ROOT\\NET\\0002");
 
         Assert.Equal("exact-id", firstDevice.ApplicableUpdate?.UpdateId);
-        Assert.Equal(UpdateClassification.Current, secondDevice.Classification);
+        Assert.Equal("generic-id", secondDevice.ApplicableUpdate?.UpdateId);
     }
 
     [Fact]
-    public void Evaluate_does_not_assign_update_merely_because_version_number_is_higher()
+    public void Evaluate_marks_device_unknown_when_unmapped_driver_updates_exist()
     {
         var device = CreateDevice(
             "ROOT\\NET\\0001",
@@ -69,14 +69,14 @@ public sealed class RecommendationEngineTests
 
         var update = CreateUpdate(
             "other-device-id",
-            "Other Vendor Driver 100.0",
+            "Other Vendor Driver",
             "Contoso",
             "Net",
-            version: new Version(100, 0));
+            driverHardwareId: "PCI\\VEN_10EC&DEV_9999");
 
         var result = _engine.Evaluate([device], CreateUpdateScan([update]));
 
-        Assert.Equal(UpdateClassification.Current, Assert.Single(result.Recommendations).Classification);
+        Assert.Equal(UpdateClassification.Unknown, Assert.Single(result.Recommendations).Classification);
     }
 
     [Fact]
@@ -103,10 +103,11 @@ public sealed class RecommendationEngineTests
         var device = CreateDevice("ROOT\\NET\\0001", "Net", "Intel", ["PCI\\VEN_8086&DEV_1234"]);
         var optionalUpdate = CreateUpdate(
             "optional-id",
-            "Intel Driver PCI\\VEN_8086&DEV_1234",
+            "Intel Driver",
             "Intel",
             "Net",
-            classification: UpdateClassification.WindowsOptional);
+            classification: UpdateClassification.WindowsOptional,
+            driverHardwareId: "PCI\\VEN_8086&DEV_1234");
 
         var result = _engine.Evaluate([device], CreateUpdateScan([optionalUpdate]));
 
@@ -119,10 +120,11 @@ public sealed class RecommendationEngineTests
         var device = CreateDevice("ROOT\\NET\\0001", "Net", "Intel", ["PCI\\VEN_8086&DEV_1234"]);
         var optionalUpdate = CreateUpdate(
             "optional-id",
-            "Intel Driver PCI\\VEN_8086&DEV_1234",
+            "Intel Driver",
             "Intel",
             "Net",
-            classification: UpdateClassification.WindowsOptional);
+            classification: UpdateClassification.WindowsOptional,
+            driverHardwareId: "PCI\\VEN_8086&DEV_1234");
 
         var result = _engine.Evaluate(
             [device],
@@ -173,6 +175,7 @@ public sealed class RecommendationEngineTests
         string driverClass,
         Version? version = null,
         string? driverModel = null,
+        string? driverHardwareId = null,
         UpdateClassification classification = UpdateClassification.WindowsRecommended,
         IReadOnlyList<string>? categories = null) =>
         new(
@@ -190,7 +193,8 @@ public sealed class RecommendationEngineTests
             false,
             false,
             false,
-            categories ?? []);
+            categories ?? [],
+            driverHardwareId);
 
     private static DriverUpdateScanResult CreateUpdateScan(IReadOnlyList<WindowsUpdateCandidate> candidates) =>
         new(
@@ -245,13 +249,15 @@ public sealed class UpdateApplicabilityMatcherTests
         var hardwareMatch = classOnly with
         {
             UpdateId = "2",
-            Title = "Intel driver for PCI\\VEN_8086&DEV_1234",
+            DriverHardwareId = "PCI\\VEN_8086&DEV_1234",
         };
 
         var classScore = UpdateApplicabilityMatcher.Score(device, classOnly);
         var hardwareScore = UpdateApplicabilityMatcher.Score(device, hardwareMatch);
 
         Assert.True(hardwareScore > classScore);
+        Assert.True(UpdateApplicabilityMatcher.HasStrongMatch(device, hardwareMatch, hardwareScore));
+        Assert.False(UpdateApplicabilityMatcher.HasStrongMatch(device, classOnly, classScore));
     }
 }
 

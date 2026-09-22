@@ -2,6 +2,7 @@ using Tortoise.Contracts.Mutation;
 using Tortoise.Core.Devices;
 using Tortoise.Core.Mutation;
 using Tortoise.Core.Planning;
+using Tortoise.Core.Transactions;
 using Tortoise.Core.Updates;
 
 namespace Tortoise.Core.Installation;
@@ -12,6 +13,7 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
     private readonly IUpdatePlanService _planService;
     private readonly IUpdatePreflightService _preflightService;
     private readonly IDeviceInventoryProvider _deviceInventoryProvider;
+    private readonly IUpdateTransactionStore _transactionStore;
     private readonly IBrokerPlanValidationClient? _brokerPlanValidationClient;
     private readonly IBrokerDriverInstallClient? _brokerDriverInstallClient;
     private readonly IRealPostInstallVerificationService _postInstallVerificationService;
@@ -21,6 +23,7 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
         IUpdatePlanService planService,
         IUpdatePreflightService preflightService,
         IDeviceInventoryProvider deviceInventoryProvider,
+        IUpdateTransactionStore transactionStore,
         IRealPostInstallVerificationService postInstallVerificationService,
         IBrokerPlanValidationClient? brokerPlanValidationClient = null,
         IBrokerDriverInstallClient? brokerDriverInstallClient = null)
@@ -29,6 +32,7 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
         _planService = planService;
         _preflightService = preflightService;
         _deviceInventoryProvider = deviceInventoryProvider;
+        _transactionStore = transactionStore;
         _postInstallVerificationService = postInstallVerificationService;
         _brokerPlanValidationClient = brokerPlanValidationClient;
         _brokerDriverInstallClient = brokerDriverInstallClient;
@@ -58,15 +62,48 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
         var storedPlan = await _planService.GetPlanAsync(planId, cancellationToken)
             ?? throw new InvalidOperationException($"Plan '{planId}' was not found.");
 
+        var transactionId = Guid.NewGuid();
+        var journal = new List<OperationJournalEntry>();
+        var timestamp = DateTimeOffset.UtcNow;
+        var transaction = new UpdateTransaction(
+            transactionId,
+            storedPlan.PlanId,
+            UpdateTransactionState.Discovered,
+            timestamp);
+
+        transaction = Advance(
+            transaction,
+            UpdateTransactionState.Eligible,
+            journal,
+            "VM install transaction opened.",
+            ref timestamp);
+        transaction = Advance(
+            transaction,
+            UpdateTransactionState.Planned,
+            journal,
+            "Frozen plan loaded for VM install.",
+            ref timestamp);
+        transaction = Advance(
+            transaction,
+            UpdateTransactionState.PreflightRunning,
+            journal,
+            "Preflight started.",
+            ref timestamp);
+
         if (storedPlan.RiskLevel != DriverRiskLevel.Low
             || storedPlan.Classification != UpdateClassification.WindowsRecommended)
         {
-            return Blocked(
+            return await FailAsync(
                 storedPlan.PlanId,
+                transaction,
+                journal,
+                UpdateTransactionState.PreflightFailed,
                 null,
                 null,
                 null,
-                $"Plan '{storedPlan.PlanId}' is not eligible for disposable VM install. Only low-risk Windows-recommended updates are allowed.");
+                null,
+                $"Plan '{storedPlan.PlanId}' is not eligible for disposable VM install. Only low-risk Windows-recommended updates are allowed.",
+                cancellationToken);
         }
 
         var inventoryBefore = await _deviceInventoryProvider.ScanAsync(cancellationToken);
@@ -84,13 +121,37 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
 
         if (preflight.IsBlocked)
         {
-            return Blocked(
+            return await FailAsync(
                 storedPlan.PlanId,
+                transaction,
+                journal,
+                UpdateTransactionState.PreflightFailed,
                 preflight,
                 null,
                 null,
-                "Preflight blocked the disposable VM install.");
+                null,
+                "Preflight blocked the disposable VM install.",
+                cancellationToken);
         }
+
+        transaction = Advance(
+            transaction,
+            UpdateTransactionState.PreflightPassed,
+            journal,
+            "Preflight passed.",
+            ref timestamp);
+        transaction = Advance(
+            transaction,
+            UpdateTransactionState.AwaitingConsent,
+            journal,
+            "VM install consent implied by lab invocation.",
+            ref timestamp);
+        transaction = Advance(
+            transaction,
+            UpdateTransactionState.AwaitingElevation,
+            journal,
+            "Broker elevation requested.",
+            ref timestamp);
 
         BrokerPlanValidationResult? brokerValidation = null;
         if (options.RequireBrokerValidation)
@@ -109,12 +170,17 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
 
             if (!brokerValidation.Succeeded)
             {
-                return Blocked(
+                return await FailAsync(
                     storedPlan.PlanId,
+                    transaction,
+                    journal,
+                    UpdateTransactionState.Failed,
                     preflight,
                     brokerValidation,
                     null,
-                    $"Broker plan validation failed: {brokerValidation.Message}");
+                    null,
+                    $"Broker plan validation failed: {brokerValidation.Message}",
+                    cancellationToken);
             }
         }
 
@@ -123,6 +189,13 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
             throw new InvalidOperationException(
                 "Broker driver install client or broker options are unavailable.");
         }
+
+        transaction = Advance(
+            transaction,
+            UpdateTransactionState.Installing,
+            journal,
+            "Broker driver install started.",
+            ref timestamp);
 
         var candidate = storedPlan.Plan.ProposedUpdate.Candidate;
         var brokerInstall = await _brokerDriverInstallClient.InstallDriverAsync(
@@ -135,13 +208,31 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
 
         if (!brokerInstall.Succeeded)
         {
-            return Blocked(
+            return await FailAsync(
                 storedPlan.PlanId,
+                transaction,
+                journal,
+                UpdateTransactionState.Failed,
                 preflight,
                 brokerValidation,
                 brokerInstall,
-                $"Broker driver install failed: {brokerInstall.Message}");
+                null,
+                $"Broker driver install failed: {brokerInstall.Message}",
+                cancellationToken);
         }
+
+        transaction = Advance(
+            transaction,
+            UpdateTransactionState.InstallReturned,
+            journal,
+            "Broker driver install returned.",
+            ref timestamp);
+        transaction = Advance(
+            transaction,
+            UpdateTransactionState.PostInstallChecking,
+            journal,
+            "Post-install verification started.",
+            ref timestamp);
 
         var inventoryAfter = await _deviceInventoryProvider.ScanAsync(cancellationToken);
         var deviceAfter = inventoryAfter.Devices.SingleOrDefault(device =>
@@ -151,15 +242,22 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
                     StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException("Target device disappeared after install.");
 
-        var operationId = Guid.NewGuid();
         var postInstallVerification = _postInstallVerificationService.VerifyPostInstall(
             storedPlan,
             currentDevice,
             deviceAfter,
-            operationId);
+            transactionId);
 
         if (postInstallVerification.Result == UpdateVerificationResult.Failed)
         {
+            transaction = Advance(
+                transaction,
+                UpdateTransactionState.Failed,
+                journal,
+                postInstallVerification.Message,
+                ref timestamp);
+            await _transactionStore.SaveAsync(new UpdateTransactionRecord(transaction, journal), cancellationToken);
+
             return new VmDriverInstallResult(
                 storedPlan.PlanId,
                 preflight,
@@ -169,6 +267,19 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
                 CompletedSuccessfully: false,
                 Summary: postInstallVerification.Message);
         }
+
+        transaction = Advance(
+            transaction,
+            brokerInstall.RebootRequired
+                ? UpdateTransactionState.RestartRequired
+                : UpdateTransactionState.Completed,
+            journal,
+            brokerInstall.RebootRequired
+                ? "VM install completed; reboot may be required."
+                : "VM install completed and post-install verification passed.",
+            ref timestamp);
+
+        await _transactionStore.SaveAsync(new UpdateTransactionRecord(transaction, journal), cancellationToken);
 
         var summary = brokerInstall.RebootRequired
             ? "Disposable VM install completed; a reboot may be required."
@@ -184,22 +295,52 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
             Summary: summary);
     }
 
-    private static VmDriverInstallResult Blocked(
+    private async Task<VmDriverInstallResult> FailAsync(
         Guid planId,
+        UpdateTransaction transaction,
+        List<OperationJournalEntry> journal,
+        UpdateTransactionState terminalState,
         UpdatePreflight? preflight,
         BrokerPlanValidationResult? brokerValidation,
         BrokerDriverInstallResult? brokerInstall,
-        string summary) =>
-        new(
+        UpdateVerification? postInstallVerification,
+        string summary,
+        CancellationToken cancellationToken)
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+        transaction = Advance(transaction, terminalState, journal, summary, ref timestamp);
+        await _transactionStore.SaveAsync(new UpdateTransactionRecord(transaction, journal), cancellationToken);
+
+        return new VmDriverInstallResult(
             planId,
             preflight ?? new UpdatePreflight(planId, [], true),
             brokerValidation,
             brokerInstall,
-            new UpdateVerification(
-                Guid.Empty,
-                UpdateVerificationResult.Failed,
-                summary,
-                DateTimeOffset.UtcNow),
+            postInstallVerification
+                ?? new UpdateVerification(
+                    transaction.TransactionId,
+                    UpdateVerificationResult.Failed,
+                    summary,
+                    DateTimeOffset.UtcNow),
             CompletedSuccessfully: false,
             Summary: summary);
+    }
+
+    private static UpdateTransaction Advance(
+        UpdateTransaction transaction,
+        UpdateTransactionState to,
+        IList<OperationJournalEntry> journal,
+        string message,
+        ref DateTimeOffset timestamp)
+    {
+        journal.Add(new OperationJournalEntry(
+            transaction.TransactionId,
+            transaction.State,
+            to,
+            timestamp,
+            message));
+
+        timestamp = timestamp.AddMilliseconds(1);
+        return transaction with { State = to, UpdatedAtUtc = timestamp };
+    }
 }

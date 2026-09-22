@@ -52,6 +52,25 @@ public sealed class SqliteUpdatePlanStore : IUpdatePlanStore, IDisposable
 
             foreach (var storedPlan in plans)
             {
+                if (storedPlan.IsFrozen)
+                {
+                    using var existsCommand = _connection.CreateCommand();
+                    existsCommand.Transaction = transaction;
+                    existsCommand.CommandText =
+                        """
+                        SELECT is_frozen
+                        FROM update_plans
+                        WHERE plan_id = $planId;
+                        """;
+                    existsCommand.Parameters.AddWithValue("$planId", storedPlan.PlanId.ToString());
+                    var existing = await existsCommand.ExecuteScalarAsync(cancellationToken);
+                    if (existing is not null && Convert.ToInt32(existing) == 1)
+                    {
+                        throw new InvalidOperationException(
+                            $"Plan '{storedPlan.PlanId}' is frozen and cannot be overwritten.");
+                    }
+                }
+
                 using var command = _connection.CreateCommand();
                 command.Transaction = transaction;
                 command.CommandText =
@@ -84,7 +103,8 @@ public sealed class SqliteUpdatePlanStore : IUpdatePlanStore, IDisposable
                         risk_level = excluded.risk_level,
                         is_frozen = excluded.is_frozen,
                         plan_hash = excluded.plan_hash,
-                        payload_json = excluded.payload_json;
+                        payload_json = excluded.payload_json
+                    WHERE is_frozen = 0;
                     """;
 
                 command.Parameters.AddWithValue("$planId", storedPlan.PlanId.ToString());

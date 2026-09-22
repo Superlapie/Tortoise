@@ -36,7 +36,7 @@ public sealed record DeviceContext(
 public sealed class DefaultUpdateSourcePolicy : IUpdateSourcePolicy
 {
     public bool IsSourceAllowed(DriverSource source) =>
-        source.IsTrusted && source.Kind is DriverSourceKind.WindowsUpdate or DriverSourceKind.Inbox;
+        source.Kind is DriverSourceKind.WindowsUpdate or DriverSourceKind.Inbox;
 
     public UpdateClassification ClassifyUpdate(DriverUpdate update, DeviceContext context)
     {

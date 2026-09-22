@@ -5,9 +5,9 @@ namespace Tortoise.Core.Tests.Updates;
 public sealed class WindowsUpdateClassificationMapperTests
 {
     [Theory]
-    [InlineData(1, false, false, UpdateClassification.WindowsRecommended)]
-    [InlineData(2, false, false, UpdateClassification.WindowsRecommended)]
-    [InlineData(3, false, false, UpdateClassification.WindowsOptional)]
+    [InlineData(3, false, false, UpdateClassification.WindowsRecommended)]
+    [InlineData(2, false, false, UpdateClassification.WindowsOptional)]
+    [InlineData(1, false, false, UpdateClassification.ReviewRequired)]
     [InlineData(0, false, false, UpdateClassification.ReviewRequired)]
     [InlineData(0, true, false, UpdateClassification.Restricted)]
     [InlineData(0, false, true, UpdateClassification.Current)]

@@ -177,11 +177,37 @@ public static class Program
         }
         catch
         {
-            // Broker is not already running; start a one-shot server in the background.
+            // Broker is not already running; launch an elevated broker host.
         }
 
-        _ = Task.Run(() => BrokerHost.RunOnceAsync(options));
-        await Task.Delay(150);
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new InvalidOperationException("Elevated broker launch requires Windows.");
+        }
+
+        if (!BrokerElevationLauncher.TryLaunchElevatedBroker(options, out var launchError))
+        {
+            throw new InvalidOperationException(
+                launchError ?? "Failed to launch the elevated Tortoise broker.");
+        }
+
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            await Task.Delay(250);
+            try
+            {
+                _ = await client.SendAsync(
+                    options with { ConnectTimeoutMs = 500 },
+                    BrokerRequestFactory.Create(BrokerOperation.Ping, options.SessionId, options.CapabilityToken));
+                return;
+            }
+            catch
+            {
+                // Broker may still be starting after UAC elevation.
+            }
+        }
+
+        throw new InvalidOperationException("Elevated Tortoise broker did not become reachable.");
     }
 
     private static void ConfigureDatabasePath(Tortoise.Persistence.Options.TortoisePersistenceOptions options, string[] args)

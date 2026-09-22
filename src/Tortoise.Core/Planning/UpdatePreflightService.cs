@@ -6,7 +6,9 @@ using Tortoise.Core.Updates;
 
 namespace Tortoise.Core.Planning;
 
-public sealed record PreflightContext(bool ForSimulation = false);
+public sealed record PreflightContext(
+    bool ForSimulation = false,
+    bool ForPhysicalPilotReadiness = false);
 
 public interface IUpdatePreflightService
 {
@@ -81,6 +83,13 @@ public sealed class UpdatePreflightService : IUpdatePreflightService
         if (mutationCapability.IsEnabled)
         {
             return Passed("mutation-capability", "Mutation capability is enabled for this environment.");
+        }
+
+        if (context.ForPhysicalPilotReadiness)
+        {
+            return Passed(
+                "mutation-capability",
+                "Readiness-only preflight: mutation authorization is evaluated separately at install time.");
         }
 
         if (context.ForSimulation)

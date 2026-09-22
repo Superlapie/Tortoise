@@ -6,12 +6,14 @@ using Tortoise.Broker.Handling;
 using Tortoise.Broker.Serialization;
 using Tortoise.Contracts.Elevation;
 using Tortoise.Contracts.Mutation;
+using Tortoise.Core.Devices;
 using Tortoise.Core.Installation;
 using Tortoise.Core.Mutation;
 using Tortoise.Core.Planning;
 using Tortoise.Persistence.Extensions;
 using Tortoise.Persistence.Planning;
 using Tortoise.Security.Broker;
+using Tortoise.Windows.Devices;
 using Tortoise.WindowsUpdate;
 using Tortoise.WindowsUpdate.Environment;
 
@@ -155,7 +157,11 @@ public static class BrokerHost
         planStore.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
         var planAuthority = new BrokerPlanAuthority(planStore);
 
-        var handler = new BrokerRequestHandler(options, detector, planAuthority, installService);
+        IDeviceInventoryProvider? deviceInventoryProvider = OperatingSystem.IsWindows()
+            ? new WindowsDeviceInventoryProvider()
+            : null;
+
+        var handler = new BrokerRequestHandler(options, detector, planAuthority, installService, deviceInventoryProvider);
         var server = new BrokerPipeServer(handler);
         return server.ServeOnceAsync(options, cancellationToken);
     }
@@ -169,20 +175,37 @@ public static class BrokerElevationLauncher
         error = null;
         try
         {
-            var brokerPath = Path.Combine(AppContext.BaseDirectory, "Tortoise.Broker.exe");
-            if (!File.Exists(brokerPath))
-            {
-                brokerPath = Path.Combine(AppContext.BaseDirectory, "Tortoise.Broker.dll");
-            }
+            var brokerExe = Path.Combine(AppContext.BaseDirectory, "Tortoise.Broker.exe");
+            var brokerDll = Path.Combine(AppContext.BaseDirectory, "Tortoise.Broker.dll");
+            var arguments =
+                $"serve --session-id={options.SessionId} --pipe={options.GetEffectivePipeName()} --capability={options.CapabilityToken}";
 
-            var startInfo = new System.Diagnostics.ProcessStartInfo
+            System.Diagnostics.ProcessStartInfo startInfo;
+            if (File.Exists(brokerExe))
             {
-                FileName = brokerPath,
-                Arguments =
-                    $"serve --session-id={options.SessionId} --pipe={options.GetEffectivePipeName()} --capability={options.CapabilityToken}",
-                UseShellExecute = true,
-                Verb = "runas",
-            };
+                startInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = brokerExe,
+                    Arguments = arguments,
+                    UseShellExecute = true,
+                    Verb = "runas",
+                };
+            }
+            else if (File.Exists(brokerDll))
+            {
+                startInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "dotnet",
+                    Arguments = $"\"{brokerDll}\" {arguments}",
+                    UseShellExecute = true,
+                    Verb = "runas",
+                };
+            }
+            else
+            {
+                error = "Tortoise.Broker executable was not found next to the lab host.";
+                return false;
+            }
 
             return System.Diagnostics.Process.Start(startInfo) is not null;
         }

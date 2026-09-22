@@ -63,6 +63,6 @@ public sealed class BrokerPlanAuthority : IBrokerPlanAuthority
             }
         }
 
-        return new BrokerPlanAuthorityResult(true, "Plan authorization succeeded.");
+        return new BrokerPlanAuthorityResult(true, "Plan authorization succeeded.", storedPlan);
     }
 }

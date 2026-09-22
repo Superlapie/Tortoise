@@ -61,8 +61,9 @@ public static class WindowsUpdateClassificationMapper
 
         return autoSelection switch
         {
-            1 or 2 => UpdateClassification.WindowsRecommended,
-            3 => UpdateClassification.WindowsOptional,
+            3 => UpdateClassification.WindowsRecommended,
+            2 => UpdateClassification.WindowsOptional,
+            1 => UpdateClassification.ReviewRequired,
             _ => UpdateClassification.ReviewRequired,
         };
     }

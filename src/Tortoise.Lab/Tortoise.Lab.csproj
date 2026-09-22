@@ -7,7 +7,6 @@
     <Nullable>enable</Nullable>
     <AssemblyName>tortoise-lab</AssemblyName>
     <DefineConstants>$(DefineConstants);TORTOISE_LAB</DefineConstants>
-    <DefineConstants>$(DefineConstants);TORTOISE_LAB</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Principal;
 using Tortoise.Contracts.Elevation;
+using Tortoise.Core.Planning;
 
 namespace Tortoise.Security.Broker;
 
@@ -39,7 +40,8 @@ public static class WindowsSessionIdentity
 
 public sealed record BrokerPlanAuthorityResult(
     bool IsAuthorized,
-    string Message);
+    string Message,
+    StoredUpdatePlan? StoredPlan = null);
 
 public interface IBrokerPlanAuthority
 {

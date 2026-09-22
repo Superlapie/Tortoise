@@ -26,11 +26,18 @@ public sealed class SimulatedUpdatePackageVerificationService : ISimulatedUpdate
         }
 
         var package = storedPlan.Plan.ProposedUpdate.Candidate.Package;
-        if (!package.Signature.IsSigned)
+        if (package.Source.Kind != DriverSourceKind.WindowsUpdate)
         {
             return Failed(
                 transactionId,
-                "Package verification failed because the proposed package is not signed.");
+                "Package verification failed because the proposed package is not from Windows Update.");
+        }
+
+        if (package.Signature.IsSigned || package.Signature.IsCatalogValid)
+        {
+            return Failed(
+                transactionId,
+                "Package verification failed because signature/catalog claims must not be asserted before independent verification.");
         }
 
         var currentVersion = storedPlan.Plan.CurrentDriver.Package.Identity.DriverVersion;

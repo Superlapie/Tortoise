@@ -165,6 +165,7 @@ public sealed class VmDriverInstallServiceTests
             new FakeUpdatePlanService(planStore),
             new UpdatePreflightService(),
             new ToggleDeviceInventoryProvider(beforeDevice, afterDevice),
+            new FakeUpdateTransactionStore(),
             new RealPostInstallVerificationService(),
             brokerPlanValidationClient: null,
             brokerDriverInstallClient: brokerInstallClient);
@@ -220,6 +221,24 @@ public sealed class VmDriverInstallServiceTests
                 new DeviceHealth(DeviceHealthState.Healthy, null, null),
                 DateTimeOffset.UtcNow),
             new DeviceDriverBinding("Intel", installedVersion, null, "intel.inf"));
+    }
+
+    private sealed class FakeUpdateTransactionStore : IUpdateTransactionStore
+    {
+        public Task<UpdateTransactionRecord> SaveAsync(
+            UpdateTransactionRecord transaction,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(transaction);
+
+        public Task<UpdateTransactionRecord?> GetAsync(
+            Guid transactionId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<UpdateTransactionRecord?>(null);
+
+        public Task<UpdateTransactionRecord?> GetLatestForPlanAsync(
+            Guid planId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<UpdateTransactionRecord?>(null);
     }
 
     private sealed class FakeBrokerDriverInstallClient : IBrokerDriverInstallClient

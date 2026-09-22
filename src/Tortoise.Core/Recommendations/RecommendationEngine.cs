@@ -42,13 +42,17 @@ public sealed class RecommendationEngine : IRecommendationEngine
         var matchedUpdateIds = assignments.Values
             .Select(match => match.Update.UpdateId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var hasUnmappedDriverUpdates = candidateList
+            .Any(candidate => !matchedUpdateIds.Contains(candidate.UpdateId));
 
         foreach (var device in devices)
         {
             var instanceId = device.Snapshot.Identity.DeviceInstanceId;
             if (!assignments.TryGetValue(instanceId, out var match))
             {
-                recommendations.Add(CreateCurrentRecommendation(device));
+                recommendations.Add(hasUnmappedDriverUpdates
+                    ? CreateUnknownRecommendation(device)
+                    : CreateCurrentRecommendation(device));
                 continue;
             }
 
@@ -81,6 +85,16 @@ public sealed class RecommendationEngine : IRecommendationEngine
             DriverRiskLevel.Low,
             RecommendationTerminology.CurrentSummary,
             RecommendationTerminology.CurrentExplanation,
+            DateTimeOffset.UtcNow);
+
+    private DeviceUpdateRecommendation CreateUnknownRecommendation(DeviceInventoryEntry device) =>
+        new(
+            device,
+            null,
+            UpdateClassification.Unknown,
+            DriverRiskLevel.Moderate,
+            RecommendationTerminology.UnknownSummary,
+            "Windows Update returned driver packages that Tortoise could not confidently associate with this device.",
             DateTimeOffset.UtcNow);
 
     private DeviceUpdateRecommendation CreateMatchedRecommendation(
@@ -179,8 +193,12 @@ public sealed class RecommendationEngine : IRecommendationEngine
                 null,
                 update.UpdateId,
                 update.DriverModel),
-            new DriverSignature(true, true, update.DriverManufacturer, null),
-            new DriverSource(DriverSourceKind.WindowsUpdate, "windows-update", "Windows Update", true));
+            new DriverSignature(false, false, update.DriverManufacturer, null),
+            new DriverSource(
+                DriverSourceKind.WindowsUpdate,
+                update.UpdateId,
+                "Windows Update (signature not yet verified)",
+                false));
 
         return new DriverCandidate(
             package,

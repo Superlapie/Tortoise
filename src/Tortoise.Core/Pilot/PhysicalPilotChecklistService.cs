@@ -183,7 +183,8 @@ public sealed class PhysicalPilotChecklistService : IPhysicalPilotChecklistServi
         var preflight = _preflightService.RunPreflight(
             storedPlan,
             currentDevice,
-            capability);
+            capability,
+            new PreflightContext(ForPhysicalPilotReadiness: true));
 
         if (preflight.IsBlocked)
         {

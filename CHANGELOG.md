@@ -7,10 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Invalid GitHub Actions SHA pins that prevented build/test/CodeQL from starting
+- WUA COM interface GUIDs, dispids, `IInstallationResult` install path, and reversed `AutoSelection` classification
+- Hardware-ID matching now uses authoritative WUA `DriverHardwareID` instead of title/description heuristics
+- Fail-closed `Unknown` device state when driver updates cannot be mapped; honest signature/source provenance
+- Frozen plan overwrite protection, canonical JSON plan hash, physical pilot readiness-only preflight
+- Broker TOCTOU re-checks, elevated broker launch in lab, VM install transaction journaling
+- Release workflow: Windows + Linux validation, prerelease assembly versioning, `dependencies.json` naming
+
 ### Added
 
-- Stabilization remediation: Tortoise.Lab mutation isolation, Windows interop/WUA rebuild, broker v2, canonical plan hash, CI/release hardening
-- Batch 15 release workflow with test gate, SBOM export, SHA-256 checksums, artifact attestation hook, and pinned Actions
+- Stabilization remediation (partial): Tortoise.Lab mutation isolation, WUA rebuild, broker v2, CI/release hardening
+- Batch 15 release workflow with dual-OS validation gate, package inventory export, SHA-256 checksums, attestation hook
 - Batch 14 physical pilot readiness checklist, confirmation recording, recovery guide, and WPF Pilot page
 - Environment marker `TORTOISE_PHYSICAL_PILOT=1` and CLI commands `tortoise pilot checklist`, `tortoise pilot confirm`, and `tortoise pilot recovery-doc`
 - Batch 13 fault injection scenarios (process crash, unexpected reboot, network failure, candidate disappearance) with reconciliation
