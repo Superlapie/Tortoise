@@ -31,16 +31,17 @@ dotnet test Tortoise.slnx -c Release
 
 ## Mutation testing
 
-Never run mutation/install tests on a production workstation. VM-gated mutation tests require explicit environment markers:
+Never run mutation/install tests on a production workstation. VM-gated mutation tests require explicit environment markers and **Tortoise.Lab**:
 
 ```bash
 TORTOISE_MUTATION_TESTS=1
 TORTOISE_ALLOW_VM_INSTALL=1
-# optional override for controlled test harnesses:
-TORTOISE_VM_MARKER=1
+tortoise-lab vm install <plan-id>
 ```
 
-All three conditions (disposable VM detection or marker, mutation tests, VM install opt-in) must be satisfied before real driver installation is enabled.
+`TORTOISE_VM_MARKER` is removed — environment variables must never substitute for detected guest VM evidence.
+
+All three conditions (detected guest VM, mutation tests marker, VM install opt-in) must be satisfied before real driver installation is enabled, and only through `tortoise-lab`.
 
 Fault injection scenarios require `TORTOISE_FAULT_INJECTION=1` and never mutate real drivers — they simulate interrupted workflows for resilience testing.
 

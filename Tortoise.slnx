@@ -3,6 +3,7 @@
     <Project Path="src/Tortoise.App/Tortoise.App.csproj" />
     <Project Path="src/Tortoise.Broker/Tortoise.Broker.csproj" />
     <Project Path="src/Tortoise.Cli/Tortoise.Cli.csproj" />
+    <Project Path="src/Tortoise.Lab/Tortoise.Lab.csproj" />
     <Project Path="src/Tortoise.Contracts/Tortoise.Contracts.csproj" />
     <Project Path="src/Tortoise.Core/Tortoise.Core.csproj" />
     <Project Path="src/Tortoise.Persistence/Tortoise.Persistence.csproj" />

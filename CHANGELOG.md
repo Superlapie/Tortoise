@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Stabilization remediation: Tortoise.Lab mutation isolation, Windows interop/WUA rebuild, broker v2, canonical plan hash, CI/release hardening
+- Batch 15 release workflow with test gate, SBOM export, SHA-256 checksums, artifact attestation hook, and pinned Actions
 - Batch 14 physical pilot readiness checklist, confirmation recording, recovery guide, and WPF Pilot page
 - Environment marker `TORTOISE_PHYSICAL_PILOT=1` and CLI commands `tortoise pilot checklist`, `tortoise pilot confirm`, and `tortoise pilot recovery-doc`
 - Batch 13 fault injection scenarios (process crash, unexpected reboot, network failure, candidate disappearance) with reconciliation

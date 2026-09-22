@@ -6,6 +6,7 @@ namespace Tortoise.Core.Planning;
 
 public sealed record BrokerPlanValidationOptions(
     int SessionId,
+    string CapabilityToken,
     string? PipeName = null,
     int ConnectTimeoutMs = 5000);
 

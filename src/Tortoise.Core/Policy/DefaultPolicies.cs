@@ -1,5 +1,6 @@
 using Tortoise.Core.Devices;
 using Tortoise.Core.Drivers;
+using Tortoise.Core.Planning;
 using Tortoise.Core.Updates;
 
 namespace Tortoise.Core.Policy;
@@ -49,6 +50,14 @@ public sealed class DefaultRiskPolicy : IRiskPolicy
 
 public sealed class DefaultUpdatePlanPolicy : IUpdatePlanPolicy
 {
-    public bool IsPlanStale(UpdatePlan plan, DeviceSnapshot currentDevice, InstalledDriver currentDriver) =>
-        StalePlanDetector.IsStale(plan, currentDevice, currentDriver);
+    public bool IsPlanStale(
+        StoredUpdatePlan storedPlan,
+        DeviceSnapshot currentDevice,
+        InstalledDriver currentDriver) =>
+        StalePlanDetector.IsStale(
+            storedPlan.Plan,
+            currentDevice,
+            currentDriver,
+            storedPlan.Classification,
+            storedPlan.RiskLevel);
 }

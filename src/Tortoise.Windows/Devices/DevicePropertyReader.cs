@@ -11,15 +11,14 @@ internal static class DevicePropertyReader
 {
     internal static IReadOnlyList<string> EnumeratePresentDeviceInstanceIds()
     {
-        uint length = 0;
-        var initialResult = ConfigManagerNative.GetDeviceIdList(null, [], ref length, GetDeviceIdListFilter.Present);
-        if (initialResult is not ConfigRet.Success and not ConfigRet.BufferSmall)
+        var sizeResult = ConfigManagerNative.GetDeviceIdListSize(null, out var length, GetDeviceIdListFilter.Present);
+        if (sizeResult != ConfigRet.Success || length == 0)
         {
-            throw CreateInteropException("CM_Get_Device_ID_List(size)", initialResult);
+            throw CreateInteropException("CM_Get_Device_ID_List_Size", sizeResult);
         }
 
         var buffer = new char[length];
-        var result = ConfigManagerNative.GetDeviceIdList(null, buffer, ref length, GetDeviceIdListFilter.Present);
+        var result = ConfigManagerNative.GetDeviceIdList(null, buffer, length, GetDeviceIdListFilter.Present);
         if (result != ConfigRet.Success)
         {
             throw CreateInteropException("CM_Get_Device_ID_List", result);

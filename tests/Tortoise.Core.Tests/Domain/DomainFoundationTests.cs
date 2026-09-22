@@ -31,7 +31,12 @@ public sealed class StalePlanDetectorTests
         var plan = CreatePlan(driverVersion: new Version(1, 0));
         var currentDriver = CreateInstalledDriver(new Version(2, 0));
 
-        Assert.True(StalePlanDetector.IsStale(plan, plan.DeviceSnapshot, currentDriver));
+        Assert.True(StalePlanDetector.IsStale(
+            plan,
+            plan.DeviceSnapshot,
+            currentDriver,
+            UpdateClassification.WindowsRecommended,
+            DriverRiskLevel.Low));
     }
 
     [Fact]
@@ -40,7 +45,12 @@ public sealed class StalePlanDetectorTests
         var plan = CreatePlan(driverVersion: new Version(1, 0));
         var currentDriver = CreateInstalledDriver(new Version(1, 0));
 
-        Assert.False(StalePlanDetector.IsStale(plan, plan.DeviceSnapshot, currentDriver));
+        Assert.False(StalePlanDetector.IsStale(
+            plan,
+            plan.DeviceSnapshot,
+            currentDriver,
+            UpdateClassification.WindowsRecommended,
+            DriverRiskLevel.Low));
     }
 
     private static UpdatePlan CreatePlan(Version driverVersion)
@@ -52,7 +62,15 @@ public sealed class StalePlanDetectorTests
             DateTimeOffset.UtcNow);
         var currentDriver = CreateInstalledDriver(driverVersion);
         var update = CreateUpdate();
-        return UpdatePlanFactory.Create(snapshot, currentDriver, update, "1", "0.1.0-alpha", false);
+        return UpdatePlanFactory.Create(
+            snapshot,
+            currentDriver,
+            update,
+            "1",
+            "0.1.0-alpha",
+            false,
+            UpdateClassification.WindowsRecommended,
+            DriverRiskLevel.Low);
     }
 
     private static InstalledDriver CreateInstalledDriver(Version version)

@@ -106,14 +106,26 @@ Mutation (install, stage, remove, restart, disable, enable drivers) remains **gl
 - Durable transaction journal markers and reconciliation guidance
 - CLI `tortoise fault run` and `tortoise fault reconcile`
 
-### Batch 14 — Physical pilot readiness ✅ (current)
+### Batch 14 — Physical pilot readiness ✅
 
 - Pilot checklist, final confirmation UI, recovery docs
 - Environment markers: `TORTOISE_MUTATION_TESTS=1`, `TORTOISE_PHYSICAL_PILOT=1`, non-VM host
 - CLI `tortoise pilot checklist`, `tortoise pilot confirm`, and `tortoise pilot recovery-doc`
 - WPF Pilot page records readiness only — does not install drivers
 
-### Batch 15 — Release engineering
+### Stabilization — Audit remediation ✅
+
+- Removed fake VM marker gate; real mutation moved to `Tortoise.Lab`
+- Rebuilt Windows interop and WUA COM layer from authoritative definitions
+- Broker v2: capability token, session binding, pipe ACL, persisted plan authority
+- Canonical plan hash, recovery blockers, CI/CodeQL/release hardening
+- See [docs/STABILIZATION.md](docs/STABILIZATION.md)
+
+### Batch 15 — Release engineering ✅ (current)
+
+- Release workflow with test gate, semver from tag, SBOM, SHA-256 checksums, attestation hook
+- Pinned GitHub Actions; protected `release` environment placeholder
+- CodeQL build step; non-empty Security/Integration test projects required
 
 - Versioning, SBOM, GitHub release pipeline, signing hooks
 

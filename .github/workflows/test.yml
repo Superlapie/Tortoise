@@ -14,8 +14,13 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11bd71901bbe5b16344ceabd3597fab798d83d2f
+      - uses: actions/setup-dotnet@3fad03288982e6044aafaa77577593a74
         with:
           dotnet-version: '10.0.x'
-      - run: dotnet test Tortoise.slnx -c Release --filter "FullyQualifiedName!~Integration"
+      - name: Restore
+        run: dotnet restore Tortoise.slnx
+      - name: Build
+        run: dotnet build Tortoise.slnx -c Release --no-restore
+      - name: Test
+        run: dotnet test Tortoise.slnx -c Release --no-build

@@ -428,7 +428,7 @@ public sealed class SimulatedFullWorkflowTests
             MutationCapability.Simulated,
             new SimulatedWorkflowExecutionOptions(
                 RequireBrokerValidation: true,
-                BrokerOptions: new BrokerPlanValidationOptions(SessionId: 42)));
+                BrokerOptions: new BrokerPlanValidationOptions(SessionId: 42, CapabilityToken: "test-capability")));
 
         Assert.False(result.CompletedSuccessfully);
         Assert.Equal(UpdateTransactionState.Failed, result.Transaction.Transaction.State);

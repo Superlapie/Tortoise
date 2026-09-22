@@ -62,7 +62,9 @@ public sealed class UpdatePreflightService : IUpdatePreflightService
             storedPlan.Plan.DeviceSnapshot,
             storedPlan.Plan.CurrentDriver,
             storedPlan.Plan.ProposedUpdate,
-            storedPlan.Plan.SafetyPolicyVersion);
+            storedPlan.Plan.SafetyPolicyVersion,
+            storedPlan.Classification,
+            storedPlan.RiskLevel);
 
         if (string.Equals(storedPlan.Plan.PlanHash, expectedHash, StringComparison.Ordinal))
         {
@@ -96,7 +98,7 @@ public sealed class UpdatePreflightService : IUpdatePreflightService
         DeviceInventoryEntry currentDevice)
     {
         var currentDriver = RecommendationPlanMapper.ToInstalledDriver(currentDevice);
-        if (_planPolicy.IsPlanStale(storedPlan.Plan, currentDevice.Snapshot, currentDriver))
+        if (_planPolicy.IsPlanStale(storedPlan, currentDevice.Snapshot, currentDriver))
         {
             return Blocked(
                 "plan-staleness",

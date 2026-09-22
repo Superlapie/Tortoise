@@ -62,10 +62,7 @@ public sealed class UpdatePlanningPersistenceTests : IDisposable
     public void Dispose()
     {
         _services.Dispose();
-        if (File.Exists(_databasePath))
-        {
-            File.Delete(_databasePath);
-        }
+        SqliteTestCleanup.ReleaseDatabase(_databasePath);
     }
 
     private static StoredUpdatePlan CreateStoredPlan()

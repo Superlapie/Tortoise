@@ -8,6 +8,11 @@ public static class MutationCapabilityResolver
     {
         ArgumentNullException.ThrowIfNull(environment);
 
+        if (!MutationBuildPolicy.AllowsRealMutation)
+        {
+            return MutationCapability.ReadOnly;
+        }
+
         if (environment.IsDisposableVm
             && environment.MutationTestsEnabled
             && environment.VmInstallExplicitlyAllowed)
@@ -15,17 +20,7 @@ public static class MutationCapabilityResolver
             return new MutationCapability(
                 isEnabled: true,
                 environment: MutationEnvironment.DisposableVm,
-                reason: "Disposable VM install enabled via explicit environment markers.");
-        }
-
-        if (!environment.IsDisposableVm
-            && environment.MutationTestsEnabled
-            && environment.PhysicalPilotExplicitlyAllowed)
-        {
-            return new MutationCapability(
-                isEnabled: true,
-                environment: MutationEnvironment.PhysicalPilot,
-                reason: "Physical pilot install enabled via explicit environment markers.");
+                reason: "Tortoise.Lab disposable VM install enabled via detected guest VM and explicit environment markers.");
         }
 
         return MutationCapability.ReadOnly;

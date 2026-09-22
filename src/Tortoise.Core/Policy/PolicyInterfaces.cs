@@ -1,5 +1,6 @@
 using Tortoise.Core.Devices;
 using Tortoise.Core.Drivers;
+using Tortoise.Core.Planning;
 using Tortoise.Core.Updates;
 
 namespace Tortoise.Core.Policy;
@@ -18,7 +19,10 @@ public interface IUpdateSourcePolicy
 
 public interface IUpdatePlanPolicy
 {
-    bool IsPlanStale(UpdatePlan plan, DeviceSnapshot currentDevice, InstalledDriver currentDriver);
+    bool IsPlanStale(
+        StoredUpdatePlan storedPlan,
+        DeviceSnapshot currentDevice,
+        InstalledDriver currentDriver);
 }
 
 public sealed record DeviceContext(

@@ -16,7 +16,7 @@ internal sealed class DeviceInfoSetScope : IDisposable
 
     public static DeviceInfoSetScope Create()
     {
-        var handle = SetupApiNative.CreateDeviceInfoList(Guid.Empty);
+        var handle = SetupApiNative.CreateDeviceInfoList(IntPtr.Zero, IntPtr.Zero);
         if (handle == IntPtr.Zero || handle == new IntPtr(-1))
         {
             throw new InvalidOperationException("SetupDiCreateDeviceInfoList failed.");

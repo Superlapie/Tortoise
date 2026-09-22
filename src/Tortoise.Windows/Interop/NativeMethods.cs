@@ -58,7 +58,7 @@ internal enum DevPropType : uint
     FileTime = 0x00000010,
 }
 
-[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+[StructLayout(LayoutKind.Sequential)]
 internal struct DevPropKey
 {
     public Guid FormatId;
@@ -67,6 +67,10 @@ internal struct DevPropKey
 
 internal static class DevPropKeys
 {
+    // DEVPKEY_Device_* driver properties (Microsoft-defined property set)
+    private static readonly Guid DriverPropertySet =
+        new("A8B865DD-2E3D-4094-AD97-E593A70C75D6");
+
     public static readonly DevPropKey DeviceParent = new()
     {
         FormatId = new Guid("4340A6C5-93FA-4706-972F-7A732D896B00"),
@@ -81,36 +85,42 @@ internal static class DevPropKeys
 
     public static readonly DevPropKey DeviceDriverProvider = new()
     {
-        FormatId = new Guid("A45C254E-DF1C-4EFD-8020-67D146A85055"),
-        PropertyId = 11,
+        FormatId = DriverPropertySet,
+        PropertyId = 13,
     };
 
     public static readonly DevPropKey DeviceDriverVersion = new()
     {
-        FormatId = new Guid("A8B865DD-2C87-4690-8E39-E40964F0C9CA"),
-        PropertyId = 3,
+        FormatId = DriverPropertySet,
+        PropertyId = 14,
     };
 
     public static readonly DevPropKey DeviceDriverDate = new()
     {
-        FormatId = new Guid("04979FA1-33EE-47BE-88E7-47135CA09686"),
-        PropertyId = 2,
+        FormatId = DriverPropertySet,
+        PropertyId = 11,
     };
 
     public static readonly DevPropKey DeviceDriverInfPath = new()
     {
-        FormatId = new Guid("A45C254E-DF1C-4EFD-8020-67D146A85055"),
-        PropertyId = 5,
+        FormatId = DriverPropertySet,
+        PropertyId = 12,
     };
 }
 
 internal static partial class ConfigManagerNative
 {
+    [LibraryImport(NativeLibraries.CfgMgr32, EntryPoint = "CM_Get_Device_ID_List_SizeW", StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial ConfigRet GetDeviceIdListSize(
+        string? filterInstanceId,
+        out uint length,
+        GetDeviceIdListFilter filter);
+
     [LibraryImport(NativeLibraries.CfgMgr32, EntryPoint = "CM_Get_Device_ID_ListW", StringMarshalling = StringMarshalling.Utf16)]
     internal static partial ConfigRet GetDeviceIdList(
         string? filterInstanceId,
         char[] buffer,
-        ref uint bufferLength,
+        uint bufferLength,
         GetDeviceIdListFilter filter);
 
     [LibraryImport(NativeLibraries.CfgMgr32, EntryPoint = "CM_Locate_DevNodeW", StringMarshalling = StringMarshalling.Utf16)]
@@ -130,7 +140,7 @@ internal static partial class ConfigManagerNative
 internal static partial class SetupApiNative
 {
     [LibraryImport(NativeLibraries.SetupApi, EntryPoint = "SetupDiCreateDeviceInfoList")]
-    internal static partial IntPtr CreateDeviceInfoList(Guid classGuid);
+    internal static partial IntPtr CreateDeviceInfoList(IntPtr classGuid, IntPtr parentWindow);
 
     [LibraryImport(NativeLibraries.SetupApi, EntryPoint = "SetupDiDestroyDeviceInfoList")]
     [return: MarshalAs(UnmanagedType.Bool)]

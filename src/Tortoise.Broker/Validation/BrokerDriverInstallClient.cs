@@ -24,6 +24,7 @@ public sealed class BrokerDriverInstallClient : IBrokerDriverInstallClient
         var hostOptions = new BrokerHostOptions
         {
             SessionId = options.SessionId,
+            CapabilityToken = options.CapabilityToken,
             PipeName = options.PipeName,
             ConnectTimeoutMs = options.ConnectTimeoutMs,
             AllowDriverInstall = BrokerHostOptions.ShouldAllowDriverInstall(),
@@ -33,6 +34,7 @@ public sealed class BrokerDriverInstallClient : IBrokerDriverInstallClient
             hostOptions,
             BrokerRequestFactory.CreateInstallDriver(
                 options.SessionId,
+                options.CapabilityToken,
                 planId,
                 planHash,
                 updateId,

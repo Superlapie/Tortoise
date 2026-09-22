@@ -6,8 +6,6 @@ public static class TortoiseEnvironmentVariables
 
     public const string AllowVmInstall = "TORTOISE_ALLOW_VM_INSTALL";
 
-    public const string VmMarker = "TORTOISE_VM_MARKER";
-
     public const string FaultInjection = "TORTOISE_FAULT_INJECTION";
 
     public const string PhysicalPilot = "TORTOISE_PHYSICAL_PILOT";

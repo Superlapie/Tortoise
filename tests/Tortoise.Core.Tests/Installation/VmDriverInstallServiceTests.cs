@@ -101,7 +101,7 @@ public sealed class VmDriverInstallServiceTests
             new FakeBrokerDriverInstallClient(new BrokerDriverInstallResult(true, "ok", 2, false)));
 
         await Assert.ThrowsAsync<MutationDeniedException>(() =>
-            service.InstallAsync(Guid.NewGuid(), new VmDriverInstallOptions(BrokerOptions: new BrokerPlanValidationOptions(1))));
+            service.InstallAsync(Guid.NewGuid(), new VmDriverInstallOptions(BrokerOptions: new BrokerPlanValidationOptions(1, "test-capability"))));
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public sealed class VmDriverInstallServiceTests
             storedPlan.PlanId,
             new VmDriverInstallOptions(
                 RequireBrokerValidation: false,
-                BrokerOptions: new BrokerPlanValidationOptions(1)));
+                BrokerOptions: new BrokerPlanValidationOptions(1, "test-capability")));
 
         Assert.False(result.CompletedSuccessfully);
         Assert.Contains("not eligible", result.Summary, StringComparison.OrdinalIgnoreCase);
@@ -139,7 +139,7 @@ public sealed class VmDriverInstallServiceTests
             storedPlan.PlanId,
             new VmDriverInstallOptions(
                 RequireBrokerValidation: false,
-                BrokerOptions: new BrokerPlanValidationOptions(1)));
+                BrokerOptions: new BrokerPlanValidationOptions(1, "test-capability")));
 
         Assert.True(result.CompletedSuccessfully);
         Assert.Equal(UpdateVerificationResult.Verified, result.PostInstallVerification.Result);

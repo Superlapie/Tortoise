@@ -1,10 +1,10 @@
 using System.Reflection;
 using System.Text.Json;
+using Tortoise.Broker.Ipc;
 using Tortoise.Contracts.Elevation;
 using Tortoise.Contracts.Mutation;
 using Tortoise.Core.Installation;
 using Tortoise.Core.Mutation;
-using Tortoise.Broker.Ipc;
 using Tortoise.Security.Broker;
 
 namespace Tortoise.Broker.Handling;
@@ -13,8 +13,9 @@ public sealed class BrokerRequestHandler
 {
     private readonly BrokerHostOptions _options;
     private readonly IExecutionEnvironmentDetector _environmentDetector;
+    private readonly IBrokerPlanAuthority _planAuthority;
     private readonly IWindowsUpdateDriverInstallService? _installService;
-    private readonly BrokerRequestValidator _validator = new();
+    private readonly BrokerRequestValidator _validator;
     private readonly BrokerReplayGuard _replayGuard = new();
     private readonly string _brokerVersion =
         Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.1.0-alpha";
@@ -22,20 +23,26 @@ public sealed class BrokerRequestHandler
     public BrokerRequestHandler(
         BrokerHostOptions options,
         IExecutionEnvironmentDetector environmentDetector,
+        IBrokerPlanAuthority planAuthority,
         IWindowsUpdateDriverInstallService? installService = null)
     {
         _options = options;
         _environmentDetector = environmentDetector;
+        _planAuthority = planAuthority;
         _installService = installService;
+        _validator = new BrokerRequestValidator(options.CapabilityToken);
     }
 
-    public BrokerResponse Handle(BrokerRequest request, int expectedSessionId)
+    public async Task<BrokerResponse> HandleAsync(
+        BrokerRequest request,
+        BrokerHostOptions options,
+        CancellationToken cancellationToken = default)
     {
         var validation = _validator.Validate(
             request,
-            expectedSessionId,
+            options.SessionId,
             _replayGuard,
-            _options.AllowDriverInstall);
+            options.AllowDriverInstall);
         if (!validation.IsValid)
         {
             return new BrokerResponse(
@@ -49,10 +56,8 @@ public sealed class BrokerRequestHandler
         {
             BrokerOperation.Ping => Success(request.RequestId, "Broker ping succeeded."),
             BrokerOperation.GetStatus => HandleGetStatus(request.RequestId),
-            BrokerOperation.ValidatePlan => Success(
-                request.RequestId,
-                $"Plan '{request.PlanId!.Value}' hash accepted for validation."),
-            BrokerOperation.InstallDriver => HandleInstallDriver(request),
+            BrokerOperation.ValidatePlan => await HandleValidatePlanAsync(request, cancellationToken),
+            BrokerOperation.InstallDriver => await HandleInstallDriverAsync(request, cancellationToken),
             _ => new BrokerResponse(
                 request.RequestId,
                 false,
@@ -75,10 +80,37 @@ public sealed class BrokerRequestHandler
                 _brokerVersion,
                 capability.IsEnabled,
                 driverInstallEnabled,
-                BrokerOperationAllowlist.GetAllowedOperationNames(driverInstallEnabled))));
+                BrokerOperationAllowlist.GetAllowedOperationNames(driverInstallEnabled),
+                _options.SessionId)));
     }
 
-    private BrokerResponse HandleInstallDriver(BrokerRequest request)
+    private async Task<BrokerResponse> HandleValidatePlanAsync(
+        BrokerRequest request,
+        CancellationToken cancellationToken)
+    {
+        var authority = await _planAuthority.ValidateAsync(
+            request.PlanId!.Value,
+            request.PlanHash!,
+            installPayload: null,
+            cancellationToken);
+
+        if (!authority.IsAuthorized)
+        {
+            return new BrokerResponse(
+                request.RequestId,
+                false,
+                BrokerErrorCode.PlanValidationFailed,
+                authority.Message);
+        }
+
+        return Success(
+            request.RequestId,
+            authority.Message);
+    }
+
+    private async Task<BrokerResponse> HandleInstallDriverAsync(
+        BrokerRequest request,
+        CancellationToken cancellationToken)
     {
         var capability = MutationCapabilityResolver.Resolve(_environmentDetector.Detect());
         if (!capability.IsEnabled || capability.Environment != MutationEnvironment.DisposableVm)
@@ -109,9 +141,24 @@ public sealed class BrokerRequestHandler
                 "Driver install payload is invalid.");
         }
 
-        var installResult = _installService.InstallAsync(
+        var authority = await _planAuthority.ValidateAsync(
+            request.PlanId!.Value,
+            request.PlanHash!,
+            payload,
+            cancellationToken);
+
+        if (!authority.IsAuthorized)
+        {
+            return new BrokerResponse(
+                request.RequestId,
+                false,
+                BrokerErrorCode.PlanValidationFailed,
+                authority.Message);
+        }
+
+        var installResult = await _installService.InstallAsync(
             payload.UpdateId,
-            payload.Revision).GetAwaiter().GetResult();
+            payload.Revision);
 
         if (!installResult.Succeeded)
         {

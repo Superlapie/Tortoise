@@ -6,18 +6,28 @@ namespace Tortoise.Core.Tests.Mutation;
 public sealed class MutationCapabilityResolverTests
 {
     [Fact]
-    public void Resolve_returns_read_only_by_default()
+    public void Resolve_returns_read_only_in_public_build()
     {
+        if (MutationBuildPolicy.AllowsRealMutation)
+        {
+            return;
+        }
+
         var capability = MutationCapabilityResolver.Resolve(
-            new ExecutionEnvironmentInfo(false, false, false));
+            new ExecutionEnvironmentInfo(true, true, true));
 
         Assert.False(capability.IsEnabled);
         Assert.Equal(MutationEnvironment.ReadOnly, capability.Environment);
     }
 
     [Fact]
-    public void Resolve_enables_disposable_vm_when_all_markers_present()
+    public void Resolve_enables_disposable_vm_when_lab_build_and_markers_present()
     {
+        if (!MutationBuildPolicy.AllowsRealMutation)
+        {
+            return;
+        }
+
         var capability = MutationCapabilityResolver.Resolve(
             new ExecutionEnvironmentInfo(true, true, true));
 
@@ -26,32 +36,17 @@ public sealed class MutationCapabilityResolverTests
     }
 
     [Fact]
-    public void Resolve_requires_vm_marker_and_explicit_opt_in()
+    public void Resolve_requires_detected_vm_and_explicit_opt_in_in_lab_build()
     {
+        if (!MutationBuildPolicy.AllowsRealMutation)
+        {
+            return;
+        }
+
         var partial = MutationCapabilityResolver.Resolve(
-            new ExecutionEnvironmentInfo(true, true, false));
+            new ExecutionEnvironmentInfo(false, true, true));
 
         Assert.False(partial.IsEnabled);
         Assert.Equal(MutationEnvironment.ReadOnly, partial.Environment);
-    }
-
-    [Fact]
-    public void Resolve_enables_physical_pilot_when_markers_present_on_non_vm()
-    {
-        var capability = MutationCapabilityResolver.Resolve(
-            new ExecutionEnvironmentInfo(false, true, false, true));
-
-        Assert.True(capability.IsEnabled);
-        Assert.Equal(MutationEnvironment.PhysicalPilot, capability.Environment);
-    }
-
-    [Fact]
-    public void Resolve_blocks_physical_pilot_on_disposable_vm()
-    {
-        var capability = MutationCapabilityResolver.Resolve(
-            new ExecutionEnvironmentInfo(true, true, true, true));
-
-        Assert.True(capability.IsEnabled);
-        Assert.Equal(MutationEnvironment.DisposableVm, capability.Environment);
     }
 }

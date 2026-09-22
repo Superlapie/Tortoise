@@ -47,9 +47,9 @@ internal static class WuaInstallExecutor
                     "Windows Update did not return the requested driver package.");
             }
 
-            var update = searchResult.Updates[1];
+            var update = searchResult.Updates[0];
             var installer = (IUpdateInstaller)session.CreateUpdateInstaller();
-            var collection = (IUpdateCollection)session.CreateUpdateCollection();
+            var collection = new UpdateCollection();
             collection.Add(update);
             installer.Updates = collection;
             installer.ForceQuiet = true;

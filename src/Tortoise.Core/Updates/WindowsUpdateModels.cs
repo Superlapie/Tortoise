@@ -20,7 +20,9 @@ public sealed record WindowsUpdateCandidate(
     bool RequiresEula,
     bool IsHidden,
     bool IsInstalled,
-    IReadOnlyList<string> Categories);
+    IReadOnlyList<string> Categories,
+    string? DriverHardwareId = null,
+    string? DriverProvider = null);
 
 public sealed record WindowsUpdateCandidateDetails(
     WindowsUpdateCandidate Candidate,

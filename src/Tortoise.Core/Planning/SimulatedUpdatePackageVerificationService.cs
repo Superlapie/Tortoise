@@ -14,7 +14,9 @@ public sealed class SimulatedUpdatePackageVerificationService : ISimulatedUpdate
             storedPlan.Plan.DeviceSnapshot,
             storedPlan.Plan.CurrentDriver,
             storedPlan.Plan.ProposedUpdate,
-            storedPlan.Plan.SafetyPolicyVersion);
+            storedPlan.Plan.SafetyPolicyVersion,
+            storedPlan.Classification,
+            storedPlan.RiskLevel);
 
         if (!string.Equals(storedPlan.Plan.PlanHash, expectedHash, StringComparison.Ordinal))
         {

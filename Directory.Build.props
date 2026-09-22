@@ -18,6 +18,6 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Tests')) or $(MSBuildProjectName.EndsWith('IntegrationTests'))">
-    <FailWhenNoTestsFound>false</FailWhenNoTestsFound>
+    <FailWhenNoTestsFound>true</FailWhenNoTestsFound>
   </PropertyGroup>
 </Project>

@@ -48,6 +48,13 @@ public sealed class VmDriverInstallService : IVmDriverInstallService
                 $"VM-gated driver installation was denied: {capability.Reason}");
         }
 
+        using var servicingLock = MutationServicingLock.TryAcquire();
+        if (!servicingLock.IsAcquired)
+        {
+            throw new MutationDeniedException(
+                "VM-gated driver installation was denied because another Tortoise servicing operation is in progress.");
+        }
+
         var storedPlan = await _planService.GetPlanAsync(planId, cancellationToken)
             ?? throw new InvalidOperationException($"Plan '{planId}' was not found.");
 

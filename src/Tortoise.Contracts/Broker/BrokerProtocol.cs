@@ -18,15 +18,17 @@ public enum BrokerErrorCode
     PlanValidationFailed = 5,
     MutationDisabled = 6,
     InternalError = 7,
+    UnauthorizedClient = 8,
 }
 
 public static class ElevationConstants
 {
-    public const int Version = 1;
+    public const int Version = 2;
 
     public const string PipeNamePrefix = "Tortoise.Broker.";
 
-    public static string GetPipeName(int sessionId) => $"{PipeNamePrefix}{sessionId.ToString()}";
+    public static string GetPipeName(int windowsSessionId, string capabilityToken) =>
+        $"{PipeNamePrefix}{windowsSessionId.ToString()}.{capabilityToken}";
 }
 
 public sealed record BrokerRequest(
@@ -38,7 +40,8 @@ public sealed record BrokerRequest(
     Guid? PlanId,
     string? PlanHash,
     DateTimeOffset IssuedAtUtc,
-    string? PayloadJson = null);
+    string? PayloadJson = null,
+    string? CapabilityToken = null);
 
 public sealed record BrokerInstallPayload(
     string UpdateId,
@@ -55,4 +58,5 @@ public sealed record BrokerStatusPayload(
     string BrokerVersion,
     bool MutationEnabled,
     bool DriverInstallEnabled,
-    IReadOnlyList<string> AllowedOperations);
+    IReadOnlyList<string> AllowedOperations,
+    int WindowsSessionId);

@@ -100,6 +100,10 @@ static int RunStatus()
     Console.WriteLine($"Mutation enabled: {capability.IsEnabled}");
     Console.WriteLine($"Environment: {capability.Environment}");
     Console.WriteLine($"Reason: {capability.Reason}");
+    Console.WriteLine($"Lab build: {MutationBuildPolicy.IsLabBuild}");
+    Console.WriteLine(MutationBuildPolicy.IsLabBuild
+        ? MutationBuildPolicy.LabBuildNotice
+        : MutationBuildPolicy.PublicBuildNotice);
     Console.WriteLine($"Disposable VM detected: {environment.IsDisposableVm}");
     Console.WriteLine($"Mutation tests marker: {environment.MutationTestsEnabled}");
     Console.WriteLine($"VM install marker: {environment.VmInstallExplicitlyAllowed}");
@@ -495,6 +499,13 @@ static int RunVmStatus()
 
 static async Task<int> RunVmInstallAsync(string[] args)
 {
+    if (!MutationBuildPolicy.AllowsRealMutation)
+    {
+        Console.Error.WriteLine("Real VM driver install is only available in Tortoise.Lab (tortoise-lab).");
+        Console.Error.WriteLine(MutationBuildPolicy.PublicBuildNotice);
+        return 2;
+    }
+
     if (!OperatingSystem.IsWindows())
     {
         Console.Error.WriteLine("VM install requires Windows.");
@@ -523,6 +534,7 @@ static async Task<int> RunVmInstallAsync(string[] args)
     await StartBrokerServerIfNeededAsync(brokerHostOptions with { AllowDriverInstall = true });
     var brokerOptions = new BrokerPlanValidationOptions(
         brokerHostOptions.SessionId,
+        brokerHostOptions.CapabilityToken,
         brokerHostOptions.PipeName,
         brokerHostOptions.ConnectTimeoutMs);
 
@@ -824,6 +836,7 @@ static async Task<int> RunWorkflowAsync(string[] args)
         await StartBrokerServerIfNeededAsync(brokerHostOptions);
         brokerOptions = new BrokerPlanValidationOptions(
             brokerHostOptions.SessionId,
+            brokerHostOptions.CapabilityToken,
             brokerHostOptions.PipeName,
             brokerHostOptions.ConnectTimeoutMs);
     }
@@ -1113,7 +1126,7 @@ static async Task<int> RunBrokerPingAsync(string[] args)
     await StartBrokerServerIfNeededAsync(options);
     var response = await client.SendAsync(
         options,
-        BrokerRequestFactory.Create(BrokerOperation.Ping, options.SessionId));
+        BrokerRequestFactory.Create(BrokerOperation.Ping, options.SessionId, options.CapabilityToken));
 
     Console.WriteLine(response.Message);
     return response.Succeeded ? 0 : 2;
@@ -1127,7 +1140,7 @@ static async Task<int> RunBrokerStatusAsync(string[] args)
     await StartBrokerServerIfNeededAsync(options);
     var response = await client.SendAsync(
         options,
-        BrokerRequestFactory.Create(BrokerOperation.GetStatus, options.SessionId));
+        BrokerRequestFactory.Create(BrokerOperation.GetStatus, options.SessionId, options.CapabilityToken));
 
     Console.WriteLine(response.Message);
     if (!string.IsNullOrWhiteSpace(response.PayloadJson))
@@ -1141,7 +1154,7 @@ static async Task<int> RunBrokerStatusAsync(string[] args)
 static async Task<int> RunBrokerServeAsync(string[] args)
 {
     var options = CreateBrokerHostOptions(args);
-    Console.WriteLine($"Broker listening on pipe '{options.PipeName ?? ElevationConstants.GetPipeName(options.SessionId)}' for session {options.SessionId.ToString()}");
+    Console.WriteLine($"Broker listening on pipe '{options.GetEffectivePipeName()}' for Windows session {options.SessionId.ToString()}");
     await BrokerHost.RunOnceAsync(options);
     Console.WriteLine("Broker request handled. Exiting.");
     return 0;
@@ -1149,11 +1162,14 @@ static async Task<int> RunBrokerServeAsync(string[] args)
 
 static BrokerHostOptions CreateBrokerHostOptions(string[] args)
 {
-    var sessionId = ParseBrokerSessionId(args) ?? Environment.ProcessId;
+    var sessionId = ParseBrokerSessionId(args) ?? WindowsSessionIdentity.GetCurrentSessionId();
+    var capability = ParseBrokerCapability(args) ?? Guid.NewGuid().ToString("N");
+    var pipeName = ParseBrokerPipeName(args);
     return new BrokerHostOptions
     {
         SessionId = sessionId,
-        PipeName = ParseBrokerPipeName(args),
+        CapabilityToken = capability,
+        PipeName = pipeName ?? ElevationConstants.GetPipeName(sessionId, capability),
         AllowDriverInstall = BrokerHostOptions.ShouldAllowDriverInstall(),
     };
 }
@@ -1185,6 +1201,19 @@ static string? ParseBrokerPipeName(string[] args)
     return null;
 }
 
+static string? ParseBrokerCapability(string[] args)
+{
+    foreach (var arg in args)
+    {
+        if (arg.StartsWith("--capability=", StringComparison.OrdinalIgnoreCase))
+        {
+            return arg["--capability=".Length..];
+        }
+    }
+
+    return null;
+}
+
 static async Task StartBrokerServerIfNeededAsync(BrokerHostOptions options)
 {
     var client = new BrokerPipeClient();
@@ -1192,7 +1221,7 @@ static async Task StartBrokerServerIfNeededAsync(BrokerHostOptions options)
     {
         _ = await client.SendAsync(
             options with { ConnectTimeoutMs = 250 },
-            BrokerRequestFactory.Create(BrokerOperation.Ping, options.SessionId));
+            BrokerRequestFactory.Create(BrokerOperation.Ping, options.SessionId, options.CapabilityToken));
         return;
     }
     catch

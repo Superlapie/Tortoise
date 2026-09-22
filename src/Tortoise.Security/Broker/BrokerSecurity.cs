@@ -51,6 +51,12 @@ public sealed record BrokerRequestValidationResult(
 public sealed class BrokerRequestValidator
 {
     private static readonly TimeSpan MaxRequestAge = TimeSpan.FromMinutes(5);
+    private readonly string _expectedCapabilityToken;
+
+    public BrokerRequestValidator(string expectedCapabilityToken)
+    {
+        _expectedCapabilityToken = expectedCapabilityToken;
+    }
 
     public BrokerRequestValidationResult Validate(
         BrokerRequest request,
@@ -65,7 +71,13 @@ public sealed class BrokerRequestValidator
 
         if (request.SessionId != expectedSessionId)
         {
-            return Invalid(BrokerErrorCode.SessionMismatch, "Broker session identifier does not match.");
+            return Invalid(BrokerErrorCode.SessionMismatch, "Broker Windows session identifier does not match.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.CapabilityToken)
+            || !string.Equals(request.CapabilityToken, _expectedCapabilityToken, StringComparison.Ordinal))
+        {
+            return Invalid(BrokerErrorCode.UnauthorizedClient, "Broker capability token is missing or invalid.");
         }
 
         if (DateTimeOffset.UtcNow - request.IssuedAtUtc > MaxRequestAge)
@@ -167,6 +179,7 @@ public static class BrokerRequestFactory
     public static BrokerRequest Create(
         BrokerOperation operation,
         int sessionId,
+        string capabilityToken,
         Guid? planId = null,
         string? planHash = null,
         string? payloadJson = null) =>
@@ -179,10 +192,12 @@ public static class BrokerRequestFactory
             planId,
             planHash,
             DateTimeOffset.UtcNow,
-            payloadJson);
+            payloadJson,
+            capabilityToken);
 
     public static BrokerRequest CreateInstallDriver(
         int sessionId,
+        string capabilityToken,
         Guid planId,
         string planHash,
         string updateId,
@@ -192,6 +207,7 @@ public static class BrokerRequestFactory
         return Create(
             BrokerOperation.InstallDriver,
             sessionId,
+            capabilityToken,
             planId,
             planHash,
             payloadJson);

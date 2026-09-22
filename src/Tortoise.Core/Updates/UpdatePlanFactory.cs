@@ -14,11 +14,20 @@ public static class UpdatePlanFactory
         DriverUpdate proposedUpdate,
         string safetyPolicyVersion,
         string applicationVersion,
-        bool restartExpected)
+        bool restartExpected,
+        UpdateClassification classification,
+        DriverRiskLevel riskLevel)
     {
         var planId = Guid.NewGuid();
         var createdAt = DateTimeOffset.UtcNow;
-        var hash = ComputeHash(planId, deviceSnapshot, currentDriver, proposedUpdate, safetyPolicyVersion);
+        var hash = ComputeHash(
+            planId,
+            deviceSnapshot,
+            currentDriver,
+            proposedUpdate,
+            safetyPolicyVersion,
+            classification,
+            riskLevel);
 
         return new UpdatePlan(
             planId,
@@ -37,15 +46,26 @@ public static class UpdatePlanFactory
         DeviceSnapshot deviceSnapshot,
         InstalledDriver currentDriver,
         DriverUpdate proposedUpdate,
-        string safetyPolicyVersion)
+        string safetyPolicyVersion,
+        UpdateClassification classification,
+        DriverRiskLevel riskLevel)
     {
+        var candidate = proposedUpdate.Candidate;
         var payload = string.Join('|',
             planId,
             deviceSnapshot.Identity.DeviceInstanceId,
-            deviceSnapshot.CapturedAtUtc.UtcTicks,
+            string.Join(',', deviceSnapshot.Identity.HardwareIds),
+            deviceSnapshot.Identity.ClassGuid,
+            currentDriver.Package.Identity.ProviderName,
+            currentDriver.Package.Identity.PublishedInfName,
             currentDriver.Package.Identity.DriverVersion,
-            proposedUpdate.Candidate.UpdateIdentity,
-            proposedUpdate.Candidate.UpdateRevision,
+            candidate.UpdateIdentity,
+            candidate.UpdateRevision.ToString(),
+            proposedUpdate.Classification,
+            proposedUpdate.RequiresEula,
+            proposedUpdate.RestartRequired,
+            classification,
+            riskLevel,
             safetyPolicyVersion);
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(payload));
@@ -58,7 +78,9 @@ public static class StalePlanDetector
     public static bool IsStale(
         UpdatePlan plan,
         DeviceSnapshot currentDevice,
-        InstalledDriver currentDriver)
+        InstalledDriver currentDriver,
+        UpdateClassification classification,
+        DriverRiskLevel riskLevel)
     {
         if (!string.Equals(
                 plan.DeviceSnapshot.Identity.DeviceInstanceId,
@@ -78,7 +100,9 @@ public static class StalePlanDetector
             plan.DeviceSnapshot,
             plan.CurrentDriver,
             plan.ProposedUpdate,
-            plan.SafetyPolicyVersion);
+            plan.SafetyPolicyVersion,
+            classification,
+            riskLevel);
 
         return !string.Equals(plan.PlanHash, expectedHash, StringComparison.Ordinal);
     }

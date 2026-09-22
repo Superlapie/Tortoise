@@ -20,6 +20,7 @@ public sealed class BrokerPlanValidationClient : IBrokerPlanValidationClient
         var hostOptions = new BrokerHostOptions
         {
             SessionId = options.SessionId,
+            CapabilityToken = options.CapabilityToken,
             PipeName = options.PipeName,
             ConnectTimeoutMs = options.ConnectTimeoutMs,
         };
@@ -29,6 +30,7 @@ public sealed class BrokerPlanValidationClient : IBrokerPlanValidationClient
             BrokerRequestFactory.Create(
                 BrokerOperation.ValidatePlan,
                 options.SessionId,
+                options.CapabilityToken,
                 planId,
                 planHash),
             cancellationToken);

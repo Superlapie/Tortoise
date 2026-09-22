@@ -76,12 +76,12 @@ public sealed class PhysicalPilotChecklistService : IPhysicalPilotChecklistServi
         ExecutionEnvironmentInfo environment,
         IMutationCapability capability)
     {
-        if (capability.Environment == MutationEnvironment.PhysicalPilot && capability.IsEnabled)
+        if (environment.IsDisposableVm)
         {
-            return Passed(
+            return Blocked(
                 "environment-gate",
                 "Physical pilot markers",
-                "Physical pilot environment markers are present.");
+                "Physical pilot cannot run on a detected disposable VM.");
         }
 
         if (!environment.MutationTestsEnabled)
@@ -100,10 +100,10 @@ public sealed class PhysicalPilotChecklistService : IPhysicalPilotChecklistServi
                 "Set TORTOISE_PHYSICAL_PILOT=1 before physical pilot work.");
         }
 
-        return Blocked(
+        return Passed(
             "environment-gate",
             "Physical pilot markers",
-            "Physical pilot mutation capability is not enabled.");
+            "Physical pilot environment markers are present. Confirmation records readiness only and does not install drivers.");
     }
 
     private static PilotChecklistItem EvaluateNotDisposableVm(ExecutionEnvironmentInfo environment)
@@ -214,12 +214,20 @@ public sealed class PhysicalPilotChecklistService : IPhysicalPilotChecklistServi
         }
 
         var latest = preparations[0];
-        if (!latest.ExportSucceeded && !latest.SystemRestoreEnabled)
+        if (DateTimeOffset.UtcNow - latest.PreparedAtUtc > PhysicalPilotConstants.RecoveryPreparationMaxAge)
         {
-            return Warning(
+            return Blocked(
                 "recovery-preparation",
                 "Recovery preparation",
-                "Recovery preparation exists but export did not succeed and System Restore appears disabled.");
+                "Latest recovery preparation is stale. Run tortoise recover prepare again.");
+        }
+
+        if (!latest.ExportSucceeded && !latest.SystemRestoreEnabled)
+        {
+            return Blocked(
+                "recovery-preparation",
+                "Recovery preparation",
+                "Recovery preparation exists but export did not succeed and System Restore is disabled.");
         }
 
         return Passed(

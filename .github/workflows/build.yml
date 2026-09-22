@@ -10,8 +10,8 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11bd71901bbe5b16344ceabd3597fab798d83d2f
+      - uses: actions/setup-dotnet@3fad03288982e6044aafaa77577593a74
         with:
           dotnet-version: '10.0.x'
       - name: Restore
@@ -24,8 +24,8 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11bd71901bbe5b16344ceabd3597fab798d83d2f
+      - uses: actions/setup-dotnet@3fad03288982e6044aafaa77577593a74
         with:
           dotnet-version: '10.0.x'
       - name: Restore

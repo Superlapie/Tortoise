@@ -8,6 +8,12 @@ internal sealed class DatabaseMigrator
     {
         connection.Open();
 
+        using (var foreignKeys = connection.CreateCommand())
+        {
+            foreignKeys.CommandText = "PRAGMA foreign_keys = ON;";
+            foreignKeys.ExecuteNonQuery();
+        }
+
         using var transaction = connection.BeginTransaction();
         var appliedVersions = GetAppliedVersions(connection, transaction);
 

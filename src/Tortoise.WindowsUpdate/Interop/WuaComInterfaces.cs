@@ -11,35 +11,38 @@ internal enum ServerSelection
 }
 
 [ComImport]
-[Guid("704DD724-2EF1-4EDA-9FB7-A8AB4222F8C4")]
+[Guid("4CB43D7F-7EEE-4906-8698-60DA1C38F2FE")]
 [CoClass(typeof(UpdateSessionClass))]
 internal interface UpdateSession : IUpdateSession
 {
 }
 
 [ComImport]
-[Guid("704DD724-2EF1-4EDA-9FB7-A8AB4222F8C4")]
+[Guid("4CB43D7F-7EEE-4906-8698-60DA1C38F2FE")]
 internal class UpdateSessionClass
 {
 }
 
 [ComImport]
-[Guid("AD785691-0349-4764-8753-6197C404DE8A")]
+[Guid("816858A4-260D-4260-933A-2585F1ABC76B")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdateSession
 {
+    [DispId(1610596874)]
+    string ClientApplicationID { get; set; }
+
     [return: MarshalAs(UnmanagedType.IDispatch)]
     object CreateUpdateSearcher();
 
     [return: MarshalAs(UnmanagedType.IDispatch)]
-    object CreateUpdateInstaller();
+    object CreateUpdateDownloader();
 
     [return: MarshalAs(UnmanagedType.IDispatch)]
-    object CreateUpdateCollection();
+    object CreateUpdateInstaller();
 }
 
 [ComImport]
-[Guid("652138BB-5572-412D-AD47-16CE87BE32F6")]
+[Guid("562933AD-C0A5-421B-B64D-563F7F564531")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdateSearcher
 {
@@ -63,7 +66,20 @@ internal interface ISearchResult
 }
 
 [ComImport]
-[Guid("816FD1E8-2DCC-40DE-881F-3F7381C8B558")]
+[Guid("7A564898-484E-4A52-8E60-5D82ACF3A9FF")]
+[CoClass(typeof(UpdateCollectionClass))]
+internal interface UpdateCollection : IUpdateCollection
+{
+}
+
+[ComImport]
+[Guid("7A564898-484E-4A52-8E60-5D82ACF3A9FF")]
+internal class UpdateCollectionClass
+{
+}
+
+[ComImport]
+[Guid("EA04EEE1-21A1-4565-924D-E6259DAB7274")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdateCollection
 {
@@ -78,7 +94,7 @@ internal interface IUpdateCollection
 }
 
 [ComImport]
-[Guid("7A601230-935E-4C3E-84BA-1E645CA106EC")]
+[Guid("EAA92B83-22F3-4F38-B30F-1FDB84EFCC4F")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdate
 {
@@ -120,12 +136,47 @@ internal interface IUpdate
 }
 
 [ComImport]
-[Guid("176DE312-0164-4CB3-ADAD-07D346EDF34D")]
+[Guid("5A838388-66C7-497D-8798-99D48588471A")]
 [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
 internal interface IUpdate2 : IUpdate
 {
     [DispId(1610743830)]
     int AutoSelection { get; }
+}
+
+[ComImport]
+[Guid("25E74697-82DB-4A09-AB3C-0CA5D5D9016B")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IUpdate5 : IUpdate2
+{
+}
+
+[ComImport]
+[Guid("B49426D1-248E-4C4B-9ADC-D3B647660190")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IWindowsDriverUpdate : IUpdate2
+{
+    [DispId(1610743840)]
+    string DriverHardwareID { get; }
+
+    [DispId(1610743841)]
+    string DriverClass { get; }
+
+    [DispId(1610743842)]
+    string DriverProvider { get; }
+
+    [DispId(1610743843)]
+    DateTime DriverVerDate { get; }
+
+    [DispId(1610743844)]
+    int DeviceProblemNumber { get; }
+}
+
+[ComImport]
+[Guid("C3AB67EF-D8E3-455F-98F6-06B80F70CC7C")]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+internal interface IWindowsDriverUpdate5 : IWindowsDriverUpdate
+{
 }
 
 [ComImport]

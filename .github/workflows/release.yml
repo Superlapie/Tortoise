@@ -7,22 +7,91 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
-  release:
-    runs-on: windows-latest
+  validate:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11bd71901bbe5b16344ceabd3597fab798d83d2f
+      - uses: actions/setup-dotnet@3fad03288982e6044aafaa77577593a74
         with:
           dotnet-version: '10.0.x'
-      - name: Publish portable
-        run: dotnet publish src/Tortoise.App/Tortoise.App.csproj -c Release -r win-x64 --self-contained false -o artifacts/portable
+      - name: Restore
+        run: dotnet restore Tortoise.slnx
+      - name: Build
+        run: dotnet build Tortoise.slnx -c Release --no-restore
+      - name: Test
+        run: dotnet test Tortoise.slnx -c Release --no-build
+
+  release:
+    needs: validate
+    runs-on: windows-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b16344ceabd3597fab798d83d2f
+      - uses: actions/setup-dotnet@3fad03288982e6044aafaa77577593a74
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Derive release version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if (-not $tag.StartsWith('v')) { throw "Tag must start with v" }
+          $version = $tag.Substring(1)
+          echo "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Publish portable app
+        shell: pwsh
+        run: |
+          dotnet publish src/Tortoise.App/Tortoise.App.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained false `
+            -o artifacts/portable `
+            /p:Version=$env:RELEASE_VERSION `
+            /p:AssemblyVersion=$env:RELEASE_VERSION `
+            /p:FileVersion=$env:RELEASE_VERSION `
+            /p:InformationalVersion=$env:RELEASE_VERSION
+
+      - name: Publish CLI
+        shell: pwsh
+        run: |
+          dotnet publish src/Tortoise.Cli/Tortoise.Cli.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained false `
+            -o artifacts/portable `
+            /p:Version=$env:RELEASE_VERSION `
+            /p:AssemblyVersion=$env:RELEASE_VERSION `
+            /p:FileVersion=$env:RELEASE_VERSION `
+            /p:InformationalVersion=$env:RELEASE_VERSION
+
+      - name: Create SBOM
+        shell: pwsh
+        run: |
+          dotnet list Tortoise.slnx package --format json > artifacts/sbom.json
+
       - name: Create release archive
         shell: pwsh
         run: |
-          Compress-Archive -Path artifacts/portable/* -DestinationPath artifacts/Tortoise-${{ github.ref_name }}-win-x64.zip
-      - uses: softprops/action-gh-release@v2
+          $archive = "artifacts/Tortoise-${{ github.ref_name }}-win-x64.zip"
+          Compress-Archive -Path artifacts/portable/* -DestinationPath $archive
+          $hash = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path "artifacts/Tortoise-${{ github.ref_name }}-win-x64.sha256" -Value "$hash  $(Split-Path $archive -Leaf)"
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@1cb8054078c5c8f916b87a0636c4a1f36d1ad264
         with:
-          files: artifacts/Tortoise-${{ github.ref_name }}-win-x64.zip
+          subject-path: artifacts/Tortoise-${{ github.ref_name }}-win-x64.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@1e1291391149a9a45116340f5a5a966ae192cae
+        with:
+          files: |
+            artifacts/Tortoise-${{ github.ref_name }}-win-x64.zip
+            artifacts/Tortoise-${{ github.ref_name }}-win-x64.sha256
+            artifacts/sbom.json
           generate_release_notes: true

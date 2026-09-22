@@ -16,6 +16,23 @@ internal static class WuaUpdateMapper
         var driverClass = categories.FirstOrDefault(category =>
             category.Contains("driver", StringComparison.OrdinalIgnoreCase));
 
+        string? driverHardwareId = null;
+        string? driverProvider = null;
+        DateOnly? driverVerDate = null;
+        Version? driverVersion = null;
+
+        if (update is IWindowsDriverUpdate driverUpdate)
+        {
+            driverHardwareId = NullIfEmpty(driverUpdate.DriverHardwareID);
+            driverProvider = NullIfEmpty(driverUpdate.DriverProvider);
+            driverClass = NullIfEmpty(driverUpdate.DriverClass) ?? driverClass;
+
+            if (driverUpdate.DriverVerDate != default)
+            {
+                driverVerDate = DateOnly.FromDateTime(driverUpdate.DriverVerDate);
+            }
+        }
+
         return new WindowsUpdateCandidate(
             identity.UpdateID,
             identity.RevisionNumber,
@@ -24,14 +41,16 @@ internal static class WuaUpdateMapper
             NullIfEmpty(update.DriverManufacturer),
             driverClass,
             NullIfEmpty(update.DriverModel),
-            TryParseVersion(update.DriverModel),
-            null,
+            driverVersion,
+            driverVerDate,
             WindowsUpdateClassificationMapper.Classify(autoSelection, update.IsHidden, update.IsInstalled),
             update.RebootRequired,
             RequiresEula(update),
             update.IsHidden,
             update.IsInstalled,
-            categories);
+            categories,
+            driverHardwareId,
+            driverProvider);
     }
 
     internal static WindowsUpdateCandidateDetails MapDetails(IUpdate update, WindowsUpdateCandidate candidate) =>
@@ -46,7 +65,7 @@ internal static class WuaUpdateMapper
         var names = new List<string>();
         for (var i = 0; i < categories.Count; i++)
         {
-            var name = categories[i + 1].Name;
+            var name = categories[i].Name;
             if (!string.IsNullOrWhiteSpace(name))
             {
                 names.Add(name);
@@ -57,17 +76,6 @@ internal static class WuaUpdateMapper
     }
 
     private static bool RequiresEula(IUpdate update) => !update.EulaAccepted;
-
-    private static Version? TryParseVersion(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        var digits = new string(value.Where(ch => char.IsDigit(ch) || ch == '.').ToArray());
-        return Version.TryParse(digits, out var version) ? version : null;
-    }
 
     private static string? NullIfEmpty(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value;
@@ -81,6 +89,7 @@ internal static class WuaSessionRunner
         try
         {
             session = new UpdateSession();
+            session.ClientApplicationID = "Tortoise";
             return action(session);
         }
         catch (COMException ex)
@@ -144,7 +153,7 @@ internal static class WuaSearchExecutor
             for (var i = 0; i < updates.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var update = updates[i + 1];
+                var update = updates[i];
                 candidates.Add(WuaUpdateMapper.Map(update));
             }
 
@@ -194,7 +203,7 @@ internal static class WuaSearchExecutor
                 return null;
             }
 
-            var update = searchResult.Updates[1];
+            var update = searchResult.Updates[0];
             var candidate = WuaUpdateMapper.Map(update);
             var details = WuaUpdateMapper.MapDetails(update, candidate);
 

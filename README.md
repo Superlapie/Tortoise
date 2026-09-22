@@ -8,7 +8,7 @@ Tortoise is a safety-first Windows driver inventory, health, update, recovery, a
 
 ## Status
 
-**Version:** `0.1.0-alpha` (Batch 14 — physical pilot readiness)
+**Version:** `0.1.0-alpha` (Stabilization + Batch 15)
 
 Current capabilities:
 
@@ -24,6 +24,7 @@ Current capabilities:
 - VM-gated real Windows Update driver install for one low-risk plan (disposable VM + explicit env markers only)
 - Fault injection scenarios for crash, reboot, network failure, and candidate disappearance with reconciliation guidance
 - Physical pilot readiness checklist, confirmation recording, and recovery documentation (no automatic install)
+- Stabilization pass: rebuilt Windows interop/WUA, broker v2 plan authority, `Tortoise.Lab` mutation isolation
 - Recovery preparation with before snapshots, export abstraction, and recovery manifest export
 - One-shot elevated broker process with named pipe IPC, nonce replay protection, and allowlisted operations (InstallDriver only in VM-gated mode)
 - WPF app with Overview, Devices, Updates, Safety, Pilot, History, Settings, and About pages
@@ -35,9 +36,8 @@ Current capabilities:
 
 Current limitations:
 
-- No driver installation on physical machines (mutation disabled unless explicit pilot or VM markers are set)
-- Physical pilot confirmation records readiness only; install remains policy-gated and manual
-- Real WUA install requires `TORTOISE_MUTATION_TESTS=1`, `TORTOISE_ALLOW_VM_INSTALL=1`, and a detected disposable VM
+- No driver installation in public `tortoise` builds — use `tortoise-lab` in an isolated VM only
+- Real WUA install requires `tortoise-lab`, `TORTOISE_MUTATION_TESTS=1`, `TORTOISE_ALLOW_VM_INSTALL=1`, and detected guest VM
 - UAC elevation launcher not wired yet (broker serve/ping available for development)
 - Driver package export remains disabled during read-only development
 

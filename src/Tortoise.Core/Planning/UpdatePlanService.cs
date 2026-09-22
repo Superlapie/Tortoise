@@ -93,7 +93,7 @@ public sealed class UpdatePlanService : IUpdatePlanService
         }
 
         var currentDriver = RecommendationPlanMapper.ToInstalledDriver(currentDevice);
-        var isStale = _planPolicy.IsPlanStale(storedPlan.Plan, currentDevice.Snapshot, currentDriver);
+        var isStale = _planPolicy.IsPlanStale(storedPlan, currentDevice.Snapshot, currentDriver);
 
         return new PlanStalenessResult(
             planId,

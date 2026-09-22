@@ -72,10 +72,7 @@ public sealed class ScanSessionStoreTests : IDisposable
     public void Dispose()
     {
         _services.Dispose();
-        if (File.Exists(_databasePath))
-        {
-            File.Delete(_databasePath);
-        }
+        SqliteTestCleanup.ReleaseDatabase(_databasePath);
     }
 
     private static RecommendationScanResult CreateSampleResult(DateTimeOffset? evaluatedAtUtc = null)
@@ -192,10 +189,7 @@ public sealed class DiagnosticsReportExporterTests : IDisposable
     public void Dispose()
     {
         _services.Dispose();
-        if (File.Exists(_databasePath))
-        {
-            File.Delete(_databasePath);
-        }
+        SqliteTestCleanup.ReleaseDatabase(_databasePath);
 
         if (Directory.Exists(_outputDirectory))
         {

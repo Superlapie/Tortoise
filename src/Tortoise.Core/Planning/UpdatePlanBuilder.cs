@@ -61,7 +61,9 @@ public sealed class UpdatePlanBuilder : IUpdatePlanBuilder
             proposedUpdate,
             TortoisePolicyVersions.SafetyPolicyVersion,
             TortoisePolicyVersions.ApplicationVersion,
-            restartExpected);
+            restartExpected,
+            recommendation.Classification,
+            recommendation.RiskLevel);
 
         return new StoredUpdatePlan(
             plan.PlanId,
