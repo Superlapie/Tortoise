@@ -82,7 +82,7 @@ internal interface IUpdateCollection
     IUpdate this[[In] int index] { get; }
 
     [DispId(0x60020003)]
-    void Add([In] IUpdate update);
+    int Add([In] IUpdate update);
 }
 
 [ComImport]
@@ -243,6 +243,7 @@ internal interface IUpdateDownloader
     [DispId(0x60020004)]
     IUpdateCollection Updates { get; set; }
 
+    [DispId(0x60020006)]
     [return: MarshalAs(UnmanagedType.Interface)]
     IDownloadResult Download();
 }
@@ -285,6 +286,7 @@ internal interface IUpdateInstaller
     [DispId(0x6002000F)]
     bool RebootRequiredBeforeInstallation { get; }
 
+    [DispId(0x6002000A)]
     [return: MarshalAs(UnmanagedType.Interface)]
     IInstallationResult Install();
 }

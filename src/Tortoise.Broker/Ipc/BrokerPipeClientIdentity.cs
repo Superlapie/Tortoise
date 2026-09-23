@@ -30,7 +30,7 @@ internal static partial class BrokerPipeClientIdentity
             return true;
         }
 
-        if (!TryGetClientProcessId(stream, out var clientProcessId))
+        if (!TryGetWindowsClientProcessId(stream, out var clientProcessId))
         {
             error = "Named pipe client process identity could not be determined.";
             return false;
@@ -46,8 +46,19 @@ internal static partial class BrokerPipeClientIdentity
         return true;
     }
 
+    internal static bool TryGetClientProcessId(PipeStream stream, out int processId)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            processId = Environment.ProcessId;
+            return true;
+        }
+
+        return TryGetWindowsClientProcessId(stream, out processId);
+    }
+
     [SupportedOSPlatform("windows")]
-    private static bool TryGetClientProcessId(PipeStream stream, out int processId)
+    private static bool TryGetWindowsClientProcessId(PipeStream stream, out int processId)
     {
         processId = 0;
 

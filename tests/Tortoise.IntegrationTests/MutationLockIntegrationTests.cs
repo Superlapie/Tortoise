@@ -4,6 +4,7 @@ using Tortoise.Core.Mutation;
 
 namespace Tortoise.IntegrationTests;
 
+[Trait("Category", "Integration")]
 public sealed class MutationLockIntegrationTests
 {
     [Fact]

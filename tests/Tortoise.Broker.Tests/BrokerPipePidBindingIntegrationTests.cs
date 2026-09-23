@@ -6,6 +6,7 @@ using Tortoise.Security.Broker;
 
 namespace Tortoise.Broker.Tests;
 
+[Trait("Category", "Integration")]
 public sealed class BrokerPipePidBindingIntegrationTests
 {
     [Fact]
@@ -53,8 +54,8 @@ public sealed class BrokerPipePidBindingIntegrationTests
                 wrongPidProbe,
                 ProcessProbeTestSupport.DefaultProbeTimeout);
 
-            Assert.Equal(3, wrongPidProbe.ExitCode);
-            Assert.Contains("ClientProcessMismatch", wrongPidOutput, StringComparison.Ordinal);
+            Assert.Equal(4, wrongPidProbe.ExitCode);
+            Assert.Contains("ERROR|", wrongPidOutput, StringComparison.Ordinal);
 
             var authorizedClient = new BrokerPipeClient();
             var response = await authorizedClient.SendAsync(

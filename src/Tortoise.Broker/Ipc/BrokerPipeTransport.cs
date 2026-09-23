@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
@@ -93,7 +94,15 @@ public sealed class BrokerPipeServer
                     options.AuthorizedClientProcessId,
                     out var clientIdentityError))
             {
-                await WriteUnauthorizedResponseAsync(server, clientIdentityError, cancellationToken);
+                if (BrokerPipeClientIdentity.TryGetClientProcessId(server, out var rejectedProcessId))
+                {
+                    Trace.TraceWarning(
+                        "Rejected pipe connection from PID {0}; expected {1}. {2}",
+                        rejectedProcessId,
+                        options.AuthorizedClientProcessId,
+                        clientIdentityError ?? "Named pipe client is not authorized.");
+                }
+
                 server.Disconnect();
                 continue;
             }

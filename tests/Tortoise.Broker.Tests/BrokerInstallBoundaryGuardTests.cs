@@ -32,6 +32,7 @@ public sealed class BrokerInstallBoundaryGuardTests
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task ValidateServicingLock_blocks_when_competing_process_holds_lock()
     {
         if (!OperatingSystem.IsWindows())
