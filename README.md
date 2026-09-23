@@ -15,6 +15,8 @@ Tortoise is a safety-first Windows driver inventory, health, update, recovery, a
 
 At commit [`9d046ec`](https://github.com/Superlapie/Tortoise/commit/9d046ec4d966539378a158ab2821ec6a2dd484ed), Tortoise passes **182** automated tests on both GitHub-hosted Windows and Ubuntu runners with **0** build warnings and **0** build errors. CodeQL successfully scans the C# codebase. Windows-specific tests include native device enumeration, Windows Update COM/SDK parity, broker PID binding, cross-process mutation locks, transaction/recovery behavior, and fail-closed security policy.
 
+At commit [`c3185cd`](https://github.com/Superlapie/Tortoise/commit/c3185cd), **204** automated tests pass on Windows and Ubuntu in the full CI suite (**198** in the filtered build workflow across **8** per-project TRX files). Build and CodeQL remain green with **0** warnings and **0** errors. Hyper-V lifecycle execution is **opt-in** and is **not** exercised by hosted CI — a passing test count does not prove checkpoint/restore ran on a real VM.
+
 **Passing tests reduce risk but do not make driver mutation risk-free.**
 
 See [docs/TESTING.md](docs/TESTING.md) for the full test taxonomy, CI source of truth, and candid limits of what automation proves. Batch 16 adds a developer-only disposable-VM harness ([docs/VM_HARNESS.md](docs/VM_HARNESS.md)) for gathering repeatable real-mutation evidence in checkpointed Hyper-V VMs — not on physical machines.

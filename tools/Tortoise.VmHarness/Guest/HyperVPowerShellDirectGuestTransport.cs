@@ -112,7 +112,7 @@ public sealed class HyperVPowerShellDirectGuestTransport : IVmHarnessGuestTransp
             $sec = ConvertTo-SecureString $env:TORTOISE_VM_HARNESS_GUEST_PASSWORD -AsPlainText -Force
             $cred = New-Object System.Management.Automation.PSCredential($env:TORTOISE_VM_HARNESS_GUEST_USER, $sec)
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
-            $remote = Invoke-Command -VMName $vm.Name -Credential $cred -ScriptBlock {
+            $remote = Invoke-Command -VMId $vm.Id -Credential $cred -ScriptBlock {
               param([string]$CommandLine, [string]$EnvSetup)
               if (-not [string]::IsNullOrWhiteSpace($EnvSetup)) {
                 Invoke-Expression $EnvSetup

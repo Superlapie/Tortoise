@@ -122,7 +122,9 @@ The guest is never trusted to prove a checkpoint exists.
 
 ### Guest proof
 
-The harness runs `tortoise-lab status` in the guest (when transport is configured) and records `IsDisposableVm` and capability resolver output.
+The harness runs `tortoise-lab status --json` in the guest with explicit Lab mutation env markers (when transport is configured) and records `IsDisposableVm` and capability resolver output.
+
+Guest commands use **PowerShell Direct addressed by Hyper-V VM ID** (`Invoke-Command -VMId`). The host resolves the VM by immutable GUID, verifies the GUID still maps to the expected display name, and invokes the guest through that ID — not by bouncing back to `-VMName` alone.
 
 If host and guest disagree → **BLOCK** (no inference about which side is correct).
 

@@ -16,6 +16,19 @@ CI on GitHub Actions is the live source of truth for current build/test results.
 
 Batch 16 adds developer-only VM harness tooling and additional harness unit tests on top of this baseline. Passing tests reduce risk but do **not** make driver mutation risk-free.
 
+## Current CI (`c3185cd`)
+
+| Field | Value |
+|-------|--------|
+| Commit SHA | `c3185cd` |
+| Full test workflow | **204 passed** on Windows and Ubuntu (includes Integration tests) |
+| Build workflow (filtered) | **198 passed** on Windows and Linux; **8** per-project TRX files aggregated |
+| Build | 0 warnings, 0 errors |
+| CodeQL | Success — 229/229 C# files scanned |
+| Verification summaries | Generated from all TRX inputs; artifact upload green |
+
+**204/204 is numerically correct but does not include real Hyper-V checkpoint/restore.** The `Category=HyperVIntegration` test is opt-in: when `TORTOISE_HARNESS_VM` is unset it returns immediately and counts as passed without touching a VM. Hyper-V lifecycle execution is opt-in and is not exercised by hosted CI.
+
 ## Test taxonomy
 
 ### Core / domain
@@ -70,7 +83,7 @@ The **`build`** workflow excludes `Category=Integration` and `Category=HyperVInt
 
 The dedicated **`test`** workflow runs the full normal suite on both Windows and Ubuntu, including the Windows process integration tests above.
 
-Hyper-V harness integration (`Category=HyperVIntegration`) remains opt-in/skipped unless a local disposable VM environment is explicitly configured.
+Hyper-V harness integration (`Category=HyperVIntegration`) is opt-in. Hosted CI does **not** configure `TORTOISE_HARNESS_VM`, so the integration test returns without exercising checkpoint/restore and still reports as passed. Run it locally with an exact VM name when you need real Hyper-V proof.
 
 ### Architecture
 
@@ -88,7 +101,7 @@ Hyper-V harness integration (`Category=HyperVIntegration`) remains opt-in/skippe
 - Host-side Hyper-V VM resolution, checkpoint naming, and restore semantics (unit tests)
 - Safety gate evaluation, host/guest double-proof blocking, evidence redaction
 - Scenario registry and dry-run default behavior
-- Opt-in Hyper-V integration tests (`Category=HyperVIntegration`, skipped in ordinary CI)
+- Opt-in Hyper-V integration tests (`Category=HyperVIntegration`; not exercised by hosted CI — see above)
 
 The VM harness (`tools/Tortoise.VmHarness/`) is **not** part of public release artifacts. It exists to gather repeatable evidence from disposable, checkpointed Hyper-V VMs. See [VM_HARNESS.md](VM_HARNESS.md).
 
@@ -128,11 +141,19 @@ dotnet test tests/Tortoise.VmHarness.Tests/Tortoise.VmHarness.Tests.csproj -c Re
 
 ## Verification summary tool
 
-After tests emit TRX files:
+After tests emit TRX files (one TRX per test project in CI):
 
 ```bash
-dotnet test Tortoise.slnx -c Release --logger "trx;LogFileName=results.trx" --results-directory artifacts/test-results
-dotnet run --project tools/Tortoise.VerificationSummary -- --trx-root=artifacts/test-results --output-root=artifacts/verification --sha=$(git rev-parse HEAD)
+mkdir -p artifacts/test-results
+for proj in tests/*/*.csproj; do
+  case "$(basename "$proj")" in *Probe*|*Integration*) continue ;; esac
+  name=$(basename "$proj" .csproj)
+  dotnet test "$proj" -c Release --no-build --filter "Category!=Integration&Category!=HyperVIntegration" \
+    --logger "trx;LogFileName=${name}.trx" --results-directory artifacts/test-results
+done
+dotnet run --project tools/Tortoise.VerificationSummary -- \
+  --trx-root=artifacts/test-results --output-root=artifacts/verification \
+  --sha=$(git rev-parse HEAD) --min-trx-files=8
 ```
 
 Outputs:
