@@ -92,8 +92,10 @@ dotnet run --project tools/Tortoise.VmHarness -- run --vm MyDisposableLabVm --sc
 Prove checkpoint create/restore **without** mutation:
 
 ```powershell
-dotnet run --project tools/Tortoise.VmHarness -- run --vm MyDisposableLabVm --scenario baseline-low-risk-install --prove-checkpoint-restore
+dotnet run --project tools/Tortoise.VmHarness -- run --vm MyDisposableLabVm --scenario checkpoint-restore-proof --prove-checkpoint-restore
 ```
+
+Run from an **elevated** PowerShell session on the Hyper-V host. Prefer **Production** checkpoints (Hyper-V default on modern Windows) for data-consistent restore; use Standard checkpoints only if a fault-injection scenario explicitly requires captured running memory state.
 
 Real disposable-VM mutation (explicit flag, all gates still mandatory):
 
@@ -132,32 +134,37 @@ If host and guest disagree → **BLOCK** (no inference about which side is corre
 
 Each run creates a directory under `artifacts/vm-harness/<run-id>/`.
 
-### Always emitted (when the corresponding phase runs)
-
-| File | When |
-|------|------|
-| `run.json` | Every run |
-| `preflight.json` | Every run (host target + host pre-gate on checkpoint paths) |
-| `scenario.json` | Scenario runs |
-| `checkpoint.json` | Checkpoint create/restore paths |
-| `restore-result.json` | After checkpoint creation (cleanup phase) |
-| `guest-environment.json` | When guest transport is configured |
-| `verification.json` | Host/guest proof on checkpoint paths |
-| `plan.json` | Baseline candidate discovery |
-| `preflight.json` | Baseline preflight (guest) |
-| `broker-result.json` | Host pre-gate and/or inner Lab gate evidence |
-| `REPORT.md` | Every run |
-| `verification.json` (manifest) | Final evidence manifest |
-
-### Emitted by baseline mutation path when guest transport is configured
+### Checkpoint / restore proof runs
 
 | File | Content |
 |------|---------|
-| `device-before.json` / `device-after.json` | Sanitized diagnostics export snapshot |
-| `wua-before.json` / `wua-after.json` | Same export snapshot (WUA/recommendation sections) |
-| `transactions-before.json` / `transactions-after.json` | `tortoise recover list` output for the harness Lab DB |
+| `run.json` | Run metadata (VM name, scenario, mode, Tortoise SHA, checkpoint IDs) |
+| `preflight.json` | Host-resolved VM target (`name`, `hyperVVmId`, `state`) |
+| `scenario.json` | Scenario definition |
+| `checkpoint.json` | Checkpoint name, checkpoint ID, bound VM ID |
+| `guest-environment.json` | `tortoise-lab status --json` with explicit Lab mutation env markers |
+| `verification.json` | Host/guest dual-proof evaluation (`proofsAgree`, block reason) |
+| `host-pregate.json` | Five-condition host pre-gate result (mutation blocked if guest proof missing) |
+| `restore-result.json` | Restore outcome, Hyper-V Running state, guest reachability after restore |
+| `manifest.json` | Final artifact manifest (file list + verdict) |
+| `REPORT.md` | Human-readable summary |
 
-Dry-run and checkpoint-proof runs do not claim to emit the before/after mutation evidence set.
+Checkpoint-proof runs do **not** create Tortoise mutation transactions or baseline mutation evidence.
+
+### Baseline mutation path (only with `--execute-disposable-vm-mutation`)
+
+| File | Content |
+|------|---------|
+| `plan.json` | Guest `tortoise plan --json` output |
+| `lab-preflight.json` | Guest `tortoise-lab vm preflight --json` (Lab capability, non-mutating) |
+| `recommendation-before.json` / `recommendation-after.json` | Latest scan recommendation export from Lab evidence snapshot |
+| `wua-before.json` / `wua-after.json` | `unmatchedUpdates` subset from evidence snapshot *(selected-candidate WUA detail is a known pre-mutation gap)* |
+| `device-before.json` / `device-after.json` | Structured device inventory from evidence snapshot |
+| `transactions-before.json` / `transactions-after.json` | Structured transaction journals from evidence snapshot |
+| `inner-gate-evidence.json` | Observed inner Lab gate evaluation |
+| `broker-result.json` | Raw Lab install JSON when mutation attempted |
+
+Dry-run and checkpoint-proof runs do not emit the baseline before/after mutation evidence set.
 
 ## Restore behavior
 
@@ -220,7 +227,7 @@ Do **not** run `--execute-disposable-vm-mutation` until:
 3. Windows + Ubuntu CI green
 4. CodeQL green
 5. Dry-run against your disposable VM succeeds
-6. `--prove-checkpoint-restore` succeeds
+6. `--prove-checkpoint-restore` with `--scenario checkpoint-restore-proof` succeeds
 7. Guest Lab detection succeeds
 8. Evidence collection works
 9. Host and guest VM proofs agree

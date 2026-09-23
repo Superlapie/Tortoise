@@ -78,7 +78,7 @@ public sealed class FileSystemVmHarnessRunStore : IVmHarnessRunStore
         VmHarnessEvidenceManifest manifest,
         CancellationToken cancellationToken = default)
     {
-        await WriteJsonArtifactAsync(run, "verification.json", manifest, cancellationToken);
+        await WriteJsonArtifactAsync(run, "manifest.json", manifest, cancellationToken);
         return manifest;
     }
 }

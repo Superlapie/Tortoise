@@ -229,7 +229,7 @@ internal sealed class InMemoryRunStore : IVmHarnessRunStore
         VmHarnessRun run,
         VmHarnessEvidenceManifest manifest,
         CancellationToken cancellationToken = default) =>
-        WriteJsonArtifactAsync(run, "verification.json", manifest, cancellationToken).ContinueWith(_ => manifest, cancellationToken);
+        WriteJsonArtifactAsync(run, "manifest.json", manifest, cancellationToken).ContinueWith(_ => manifest, cancellationToken);
 }
 
 internal sealed class ThrowingScenario : IVmHarnessScenario
