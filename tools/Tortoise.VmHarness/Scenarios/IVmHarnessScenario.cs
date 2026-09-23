@@ -16,6 +16,8 @@ public sealed class VmHarnessScenarioContext
 
     public VmHarnessGuestEnvironmentProof? GuestProof { get; init; }
 
+    public string? LabDatabasePath { get; init; }
+
     public IVmHarnessGuestTransport? GuestTransport { get; init; }
 
     public IVmHarnessRunStore RunStore { get; init; } = null!;

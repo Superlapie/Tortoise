@@ -19,8 +19,11 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
-        Console.WriteLine(MutationBuildPolicy.LabBuildNotice);
-        Console.WriteLine();
+        if (!HasJsonFlag(args))
+        {
+            Console.WriteLine(MutationBuildPolicy.LabBuildNotice);
+            Console.WriteLine();
+        }
 
         if (args.Length == 0)
         {
@@ -30,7 +33,7 @@ public static class Program
 
         return args[0].ToLowerInvariant() switch
         {
-            "status" => RunStatus(),
+            "status" => RunStatus(args),
             "vm" => await RunVmAsync(args),
             "broker" => await RunBrokerAsync(args),
             _ => PrintUnknown(args[0]),
@@ -41,8 +44,8 @@ public static class Program
     {
         Console.WriteLine("Tortoise.Lab (mutation testing — isolated VM only)");
         Console.WriteLine();
-        Console.WriteLine("  tortoise-lab status");
-        Console.WriteLine("  tortoise-lab vm install <plan-id> [--db=path-under-lab-root]");
+        Console.WriteLine("  tortoise-lab status [--json]");
+        Console.WriteLine("  tortoise-lab vm install <plan-id> [--json] [--db=path-under-lab-root]");
         Console.WriteLine("  tortoise-lab broker serve [--session-id=N] [--pipe=name] [--capability=token] [--db=path-under-lab-root]");
         return 0;
     }
@@ -54,11 +57,18 @@ public static class Program
         return 1;
     }
 
-    private static int RunStatus()
+    private static int RunStatus(string[] args)
     {
         IExecutionEnvironmentDetector detector = OperatingSystem.IsWindows()
             ? new WindowsExecutionEnvironmentDetector()
             : new UnsupportedExecutionEnvironmentDetector();
+
+        if (HasJsonFlag(args))
+        {
+            LabMachineReadableOutput.WriteStatusJson(detector);
+            return 0;
+        }
+
         var environment = detector.Detect();
         var capability = MutationCapabilityResolver.Resolve(environment);
 
@@ -67,6 +77,8 @@ public static class Program
         Console.WriteLine($"Environment: {capability.Environment}");
         Console.WriteLine($"Reason: {capability.Reason}");
         Console.WriteLine($"Disposable VM detected: {environment.IsDisposableVm}");
+        Console.WriteLine($"Mutation tests enabled: {environment.MutationTestsEnabled}");
+        Console.WriteLine($"VM install explicitly allowed: {environment.VmInstallExplicitlyAllowed}");
         return 0;
     }
 
@@ -95,13 +107,22 @@ public static class Program
 
         if (args.Length < 3 || !Guid.TryParse(args[2], out var planId))
         {
-            Console.Error.WriteLine("Usage: tortoise-lab vm install <plan-id> [--db=path-under-lab-root]");
+            Console.Error.WriteLine("Usage: tortoise-lab vm install <plan-id> [--json] [--db=path-under-lab-root]");
             return 1;
         }
 
+        var emitJson = HasJsonFlag(args);
         if (!TryResolveLabDatabasePath(args, out var databasePath, out var databaseError))
         {
-            Console.Error.WriteLine(databaseError);
+            if (emitJson)
+            {
+                LabMachineReadableOutput.WriteInstallDeniedJson(databaseError ?? "Invalid database path.", planId);
+            }
+            else
+            {
+                Console.Error.WriteLine(databaseError);
+            }
+
             return 1;
         }
 
@@ -114,6 +135,7 @@ public static class Program
         var provider = services.BuildServiceProvider();
         var scanStore = provider.GetRequiredService<IScanSessionStore>();
         var installService = provider.GetRequiredService<IVmDriverInstallService>();
+        var transactionStore = provider.GetRequiredService<IUpdateTransactionStore>();
         await scanStore.InitializeAsync();
         LabAuthoritativeStoreGuard.EnsureProtectedStoreReady(databasePath!);
 
@@ -132,12 +154,38 @@ public static class Program
                 planId,
                 new VmDriverInstallOptions(BrokerOptions: brokerOptions));
 
-            Console.WriteLine(result.Summary);
-            return result.CompletedSuccessfully ? 0 : 2;
+            var transactionRecord = await transactionStore.GetLatestForPlanAsync(planId);
+            var classification = LabMachineReadableOutput.Classify(result, transactionRecord);
+            if (emitJson)
+            {
+                LabMachineReadableOutput.WriteInstallJson(result, transactionRecord, classification);
+            }
+            else
+            {
+                Console.WriteLine(result.Summary);
+            }
+
+            return classification switch
+            {
+                LabInstallClassification.Completed => 0,
+                LabInstallClassification.AwaitingReboot => 3,
+                LabInstallClassification.PolicyBlocked => 2,
+                LabInstallClassification.RecoveryRequired => 4,
+                LabInstallClassification.VerificationInconclusive => 4,
+                _ => 2,
+            };
         }
         catch (MutationDeniedException ex)
         {
-            Console.Error.WriteLine(ex.Reason);
+            if (emitJson)
+            {
+                LabMachineReadableOutput.WriteInstallDeniedJson(ex.Reason, planId);
+            }
+            else
+            {
+                Console.Error.WriteLine(ex.Reason);
+            }
+
             return 2;
         }
     }
@@ -200,6 +248,9 @@ public static class Program
         LabAuthoritativeStoreGuard.EnsureProtectedStoreReady(databasePath);
         return true;
     }
+
+    private static bool HasJsonFlag(string[] args) =>
+        args.Any(arg => string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase));
 
     private static int? ParseIntArg(string[] args, string prefix)
     {

@@ -1,24 +1,9 @@
-using System.Text.RegularExpressions;
 using Tortoise.VmHarness.Domain;
+using Tortoise.VmHarness.Evidence;
 using Tortoise.VmHarness.Guest;
 using Tortoise.VmHarness.Safety;
 
 namespace Tortoise.VmHarness.Scenarios;
-
-public static partial class TortoiseCliOutputParser
-{
-    [GeneratedRegex(@"Plan\s+(?<id>[0-9a-fA-F-]{36})", RegexOptions.Compiled)]
-    private static partial Regex PlanIdPattern();
-
-    public static IReadOnlyList<Guid> ParsePlanIds(string output)
-    {
-        return PlanIdPattern()
-            .Matches(output)
-            .Select(match => Guid.Parse(match.Groups["id"].Value))
-            .Distinct()
-            .ToList();
-    }
-}
 
 public abstract class VmHarnessScenarioBase : IVmHarnessScenario
 {
@@ -124,36 +109,50 @@ public sealed class BaselineLowRiskInstallScenario : VmHarnessScenarioBase
                 "Dry-run complete: guest transport is not configured; candidate discovery skipped.");
         }
 
-        var labEnv = new Dictionary<string, string>
-        {
-            ["TORTOISE_MUTATION_TESTS"] = "1",
-            ["TORTOISE_ALLOW_VM_INSTALL"] = "1",
-        };
-
-        var scan = await context.GuestTransport.ExecuteCommandAsync(
-            context.Target.Name,
-            "tortoise scan",
-            labEnv,
-            cancellationToken);
-        await context.RunStore.WriteSanitizedLogAsync(
-            context.Run,
-            "guest-scan.log",
-            $"{scan.StandardOutput}\n{scan.StandardError}",
-            cancellationToken);
-
-        if (scan.ExitCode != 0)
+        if (string.IsNullOrWhiteSpace(context.LabDatabasePath))
         {
             return new VmHarnessScenarioResult(
                 Definition.Id,
                 VmHarnessVerdict.HarnessError,
                 VmHarnessMutationOutcome.NotAttempted,
                 VmHarnessRestoreOutcome.Skipped,
-                "Guest scan failed; cannot discover candidates.");
+                "Lab database path was not resolved for this harness run.");
+        }
+
+        var dbArg = VmHarnessLabDatabaseResolver.ToGuestDbArgument(context.LabDatabasePath);
+        var labEnv = new Dictionary<string, string>
+        {
+            ["TORTOISE_MUTATION_TESTS"] = "1",
+            ["TORTOISE_ALLOW_VM_INSTALL"] = "1",
+        };
+        var guestReportPath = Path.Combine(
+            Path.GetDirectoryName(context.LabDatabasePath!)!,
+            "harness-export.json");
+
+        var recommend = await context.GuestTransport.ExecuteCommandAsync(
+            context.Target.Name,
+            VmHarnessGuestEvidenceCommands.Recommend(dbArg),
+            labEnv,
+            cancellationToken);
+        await context.RunStore.WriteSanitizedLogAsync(
+            context.Run,
+            "guest-recommend.log",
+            $"{recommend.StandardOutput}\n{recommend.StandardError}",
+            cancellationToken);
+
+        if (recommend.ExitCode != 0)
+        {
+            return new VmHarnessScenarioResult(
+                Definition.Id,
+                VmHarnessVerdict.HarnessError,
+                VmHarnessMutationOutcome.NotAttempted,
+                VmHarnessRestoreOutcome.Skipped,
+                "Guest recommendation scan failed; cannot discover candidates.");
         }
 
         var planResult = await context.GuestTransport.ExecuteCommandAsync(
             context.Target.Name,
-            "tortoise plan",
+            VmHarnessGuestEvidenceCommands.PlanJson(dbArg),
             labEnv,
             cancellationToken);
         await context.RunStore.WriteSanitizedLogAsync(
@@ -167,7 +166,7 @@ public sealed class BaselineLowRiskInstallScenario : VmHarnessScenarioBase
             planResult.StandardOutput,
             cancellationToken);
 
-        var planIds = TortoiseCliOutputParser.ParsePlanIds(planResult.StandardOutput);
+        var planIds = VmHarnessPlanJsonParser.ParsePlanIds(planResult.StandardOutput);
         if (planIds.Count == 0)
         {
             return NoEligibleCandidate(
@@ -182,10 +181,15 @@ public sealed class BaselineLowRiskInstallScenario : VmHarnessScenarioBase
                 $"Dry-run complete: discovered {planIds.Count} plan(s); mutation not requested.");
         }
 
+        await VmHarnessGuestEvidenceCollector.CaptureBeforeMutationAsync(
+            context,
+            guestReportPath,
+            cancellationToken);
+
         var selectedPlanId = planIds[0];
         var preflight = await context.GuestTransport.ExecuteCommandAsync(
             context.Target.Name,
-            $"tortoise preflight {selectedPlanId}",
+            VmHarnessGuestEvidenceCommands.Preflight(selectedPlanId, dbArg),
             labEnv,
             cancellationToken);
         await context.RunStore.WriteTextArtifactAsync(
@@ -207,36 +211,53 @@ public sealed class BaselineLowRiskInstallScenario : VmHarnessScenarioBase
 
         var install = await context.GuestTransport.ExecuteCommandAsync(
             context.Target.Name,
-            $"tortoise-lab vm install {selectedPlanId}",
+            VmHarnessGuestEvidenceCommands.LabInstallJson(selectedPlanId, dbArg),
             labEnv,
             cancellationToken);
+
+        HarnessLabVmInstallJson installJson;
+        try
+        {
+            installJson = HarnessLabJsonParser.ParseInstallJson(install.StandardOutput.Trim());
+        }
+        catch
+        {
+            return new VmHarnessScenarioResult(
+                Definition.Id,
+                VmHarnessVerdict.HarnessError,
+                VmHarnessMutationOutcome.Failed,
+                VmHarnessRestoreOutcome.NotAttempted,
+                "Lab install did not return structured JSON.",
+                selectedPlanId.ToString());
+        }
+
         await context.RunStore.WriteTextArtifactAsync(
             context.Run,
             "broker-result.json",
-            $"{install.StandardOutput}\n{install.StandardError}",
+            install.StandardOutput.Trim(),
             cancellationToken);
 
-        var mutationOutcome = install.ExitCode switch
-        {
-            0 => VmHarnessMutationOutcome.Succeeded,
-            2 => VmHarnessMutationOutcome.Blocked,
-            _ => VmHarnessMutationOutcome.Failed,
-        };
+        await VmHarnessGuestEvidenceCollector.CaptureAfterMutationAsync(
+            context,
+            guestReportPath,
+            cancellationToken);
 
-        var verdict = mutationOutcome switch
-        {
-            VmHarnessMutationOutcome.Succeeded => VmHarnessVerdict.Pass,
-            VmHarnessMutationOutcome.Blocked => VmHarnessVerdict.FailClosed,
-            _ => VmHarnessVerdict.HarnessError,
-        };
+        var innerGate = VmHarnessInnerLabGate.EvaluateFromLabEvidence(
+            LabInstallResultClassifier.BuildInnerGateEvidence(installJson));
+        var (verdict, mutationOutcome) = LabInstallResultClassifier.Classify(installJson);
 
         return new VmHarnessScenarioResult(
             Definition.Id,
             verdict,
             mutationOutcome,
             VmHarnessRestoreOutcome.NotAttempted,
-            install.StandardOutput.Trim(),
-            selectedPlanId.ToString());
+            installJson.Summary,
+            selectedPlanId.ToString(),
+            installJson.TransactionId?.ToString(),
+            new Dictionary<string, string>
+            {
+                ["innerLabGate"] = System.Text.Json.JsonSerializer.Serialize(innerGate),
+            });
     }
 }
 

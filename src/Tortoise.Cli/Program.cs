@@ -59,7 +59,7 @@ static int PrintUsage()
     Console.WriteLine("  tortoise updates [--optional]");
     Console.WriteLine("  tortoise recommend [--optional]");
     Console.WriteLine("  tortoise export-report <path> [--session-id=N] [--db=path]");
-    Console.WriteLine("  tortoise plan [--session-id=N] [--device=id] [--optional] [--db=path]");
+    Console.WriteLine("  tortoise plan [--session-id=N] [--device=id] [--optional] [--json] [--db=path]");
     Console.WriteLine("  tortoise plans [--session-id=N] [--db=path]");
     Console.WriteLine("  tortoise preflight <plan-id> [--db=path]");
     Console.WriteLine("  tortoise simulate <plan-id> [--db=path]");
@@ -360,7 +360,30 @@ static async Task<int> RunPlansAsync(string[] args)
 
     if (plans.Count == 0)
     {
-        Console.WriteLine("No actionable update plans were created.");
+        if (args.Contains("--json", StringComparer.OrdinalIgnoreCase))
+        {
+            Console.WriteLine("{\"plans\":[]}");
+        }
+        else
+        {
+            Console.WriteLine("No actionable update plans were created.");
+        }
+
+        return 0;
+    }
+
+    if (args.Contains("--json", StringComparer.OrdinalIgnoreCase))
+    {
+        var payload = new
+        {
+            plans = plans.Select(plan => new
+            {
+                planId = plan.PlanId,
+                riskLevel = plan.RiskLevel.ToString(),
+                classification = plan.Classification.ToString(),
+            }).ToList(),
+        };
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(payload));
         return 0;
     }
 
