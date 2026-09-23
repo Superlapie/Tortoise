@@ -1,9 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
+using System.Runtime.Versioning;
 using Tortoise.Broker.Extensions;
 using Tortoise.Broker.Ipc;
 using Tortoise.Broker.Validation;
 using Tortoise.Contracts.Elevation;
 using Tortoise.Contracts.Mutation;
+using Tortoise.Core.Devices;
 using Tortoise.Core.Installation;
 using Tortoise.Core.Mutation;
 using Tortoise.Core.Planning;
@@ -45,6 +47,8 @@ public static class Program
         Console.WriteLine("Tortoise.Lab (mutation testing — isolated VM only)");
         Console.WriteLine();
         Console.WriteLine("  tortoise-lab status [--json]");
+        Console.WriteLine("  tortoise-lab vm preflight <plan-id> [--json] [--db=path-under-lab-root]");
+        Console.WriteLine("  tortoise-lab vm evidence snapshot [--json] [--db=path-under-lab-root]");
         Console.WriteLine("  tortoise-lab vm install <plan-id> [--json] [--db=path-under-lab-root]");
         Console.WriteLine("  tortoise-lab broker serve [--session-id=N] [--pipe=name] [--capability=token] [--db=path-under-lab-root]");
         return 0;
@@ -86,15 +90,155 @@ public static class Program
     {
         if (args.Length < 2)
         {
-            Console.Error.WriteLine("Usage: tortoise-lab vm install <plan-id>");
+            Console.Error.WriteLine("Usage: tortoise-lab vm <preflight|evidence|install> ...");
+            return 1;
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            Console.Error.WriteLine("Lab VM commands require Windows.");
             return 1;
         }
 
         return args[1].ToLowerInvariant() switch
         {
+            "preflight" => await RunVmPreflightAsync(args),
+            "evidence" => await RunVmEvidenceAsync(args),
             "install" => await RunVmInstallAsync(args),
             _ => PrintUnknown(args[1]),
         };
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static async Task<int> RunVmPreflightAsync(string[] args)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Console.Error.WriteLine("VM preflight requires Windows.");
+            return 1;
+        }
+
+        if (args.Length < 3 || !Guid.TryParse(args[2], out var planId))
+        {
+            Console.Error.WriteLine("Usage: tortoise-lab vm preflight <plan-id> [--json] [--db=path-under-lab-root]");
+            return 1;
+        }
+
+        var emitJson = HasJsonFlag(args);
+        if (!TryResolveLabDatabasePath(args, out var databasePath, out var databaseError))
+        {
+            if (emitJson)
+            {
+                Console.Error.WriteLine(databaseError);
+            }
+            else
+            {
+                Console.Error.WriteLine(databaseError);
+            }
+
+            return 1;
+        }
+
+        var services = CreateLabPlanningServices(databasePath!);
+        var provider = services.BuildServiceProvider();
+        var scanStore = provider.GetRequiredService<IScanSessionStore>();
+        var planService = provider.GetRequiredService<IUpdatePlanService>();
+        var preflightService = provider.GetRequiredService<IUpdatePreflightService>();
+        var deviceProvider = provider.GetRequiredService<IDeviceInventoryProvider>();
+        var environmentDetector = provider.GetRequiredService<IExecutionEnvironmentDetector>();
+        await scanStore.InitializeAsync();
+        LabAuthoritativeStoreGuard.EnsureProtectedStoreReady(databasePath!);
+
+        var storedPlan = await planService.GetPlanAsync(planId);
+        if (storedPlan is null)
+        {
+            Console.Error.WriteLine($"Plan '{planId}' was not found.");
+            return 1;
+        }
+
+        var inventory = await deviceProvider.ScanAsync();
+        var currentDevice = inventory.Devices.SingleOrDefault(device =>
+            string.Equals(
+                device.Snapshot.Identity.DeviceInstanceId,
+                storedPlan.Plan.DeviceSnapshot.Identity.DeviceInstanceId,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (currentDevice is null)
+        {
+            Console.Error.WriteLine("Target device is no longer present in the current inventory.");
+            return 1;
+        }
+
+        var capability = MutationCapabilityResolver.Resolve(environmentDetector.Detect());
+        var preflight = preflightService.RunPreflight(storedPlan, currentDevice, capability);
+        var innerGateEvidence = LabInnerGateEvidenceAssembler.FromPreflight(storedPlan, preflight);
+
+        if (emitJson)
+        {
+            LabMachineReadableOutput.WritePreflightJson(storedPlan, preflight, innerGateEvidence);
+        }
+        else
+        {
+            Console.WriteLine($"Plan: {storedPlan.PlanId}");
+            Console.WriteLine($"Blocked: {preflight.IsBlocked}");
+            foreach (var check in preflight.Checks)
+            {
+                Console.WriteLine($"{check.Name}: {check.Result}");
+                Console.WriteLine($"  {check.Message}");
+            }
+        }
+
+        return preflight.IsBlocked ? 2 : 0;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static async Task<int> RunVmEvidenceAsync(string[] args)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Console.Error.WriteLine("VM evidence snapshot requires Windows.");
+            return 1;
+        }
+
+        if (args.Length < 3 || !string.Equals(args[2], "snapshot", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine("Usage: tortoise-lab vm evidence snapshot [--json] [--db=path-under-lab-root]");
+            return 1;
+        }
+
+        var emitJson = HasJsonFlag(args);
+        if (!TryResolveLabDatabasePath(args, out var databasePath, out var databaseError))
+        {
+            Console.Error.WriteLine(databaseError);
+            return 1;
+        }
+
+        var services = CreateLabPlanningServices(databasePath!);
+        var provider = services.BuildServiceProvider();
+        var scanStore = provider.GetRequiredService<IScanSessionStore>();
+        var planService = provider.GetRequiredService<IUpdatePlanService>();
+        var transactionStore = provider.GetRequiredService<IUpdateTransactionStore>();
+        var deviceProvider = provider.GetRequiredService<IDeviceInventoryProvider>();
+        LabAuthoritativeStoreGuard.EnsureProtectedStoreReady(databasePath!);
+
+        var snapshot = await LabEvidenceSnapshotBuilder.BuildAsync(
+            scanStore,
+            planService,
+            transactionStore,
+            deviceProvider);
+
+        if (emitJson)
+        {
+            LabMachineReadableOutput.WriteEvidenceSnapshotJson(snapshot);
+        }
+        else
+        {
+            Console.WriteLine($"Devices: {snapshot.Devices.Count}");
+            Console.WriteLine($"Plans: {snapshot.Plans.Count}");
+            Console.WriteLine($"Transactions: {snapshot.Transactions.Count}");
+        }
+
+        return 0;
     }
 
     private static async Task<int> RunVmInstallAsync(string[] args)
@@ -134,10 +278,26 @@ public static class Program
 
         var provider = services.BuildServiceProvider();
         var scanStore = provider.GetRequiredService<IScanSessionStore>();
+        var planService = provider.GetRequiredService<IUpdatePlanService>();
         var installService = provider.GetRequiredService<IVmDriverInstallService>();
         var transactionStore = provider.GetRequiredService<IUpdateTransactionStore>();
         await scanStore.InitializeAsync();
         LabAuthoritativeStoreGuard.EnsureProtectedStoreReady(databasePath!);
+
+        var storedPlan = await planService.GetPlanAsync(planId);
+        if (storedPlan is null)
+        {
+            if (emitJson)
+            {
+                LabMachineReadableOutput.WriteInstallDeniedJson($"Plan '{planId}' was not found.", planId);
+            }
+            else
+            {
+                Console.Error.WriteLine($"Plan '{planId}' was not found.");
+            }
+
+            return 1;
+        }
 
         var brokerHostOptions = CreateBrokerHostOptions(args);
         var brokerOptions = new BrokerPlanValidationOptions(
@@ -156,9 +316,21 @@ public static class Program
 
             var transactionRecord = await transactionStore.GetLatestForPlanAsync(planId);
             var classification = LabMachineReadableOutput.Classify(result, transactionRecord);
+            var innerGateEvidence = LabInnerGateEvidenceAssembler.FromInstallAttempt(
+                storedPlan,
+                result.Preflight,
+                transactionRecord,
+                result.BrokerInstall,
+                result.Summary);
+
             if (emitJson)
             {
-                LabMachineReadableOutput.WriteInstallJson(result, transactionRecord, classification);
+                LabMachineReadableOutput.WriteInstallJson(
+                    result,
+                    transactionRecord,
+                    classification,
+                    innerGateEvidence,
+                    storedPlan);
             }
             else
             {
@@ -188,6 +360,16 @@ public static class Program
 
             return 2;
         }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static ServiceCollection CreateLabPlanningServices(string databasePath)
+    {
+        var services = new ServiceCollection();
+        services.AddTortoisePersistence(options => options.DatabasePath = databasePath);
+        services.AddTortoiseUpdatePlanning();
+        services.AddSingleton<IExecutionEnvironmentDetector, WindowsExecutionEnvironmentDetector>();
+        return services;
     }
 
     private static async Task<int> RunBrokerAsync(string[] args)

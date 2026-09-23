@@ -382,6 +382,10 @@ public sealed class VmDriverInstallServiceTests
             Guid planId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<UpdateTransactionRecord?>(null);
+
+        public Task<IReadOnlyList<UpdateTransactionRecord>> ListAllAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<UpdateTransactionRecord>>([]);
     }
 
     private sealed class FakeBrokerDriverInstallClient : IBrokerDriverInstallClient

@@ -228,6 +228,10 @@ public sealed class RealTransactionRecoveryServiceTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult<UpdateTransactionRecord?>(
                 planId == _record.Transaction.PlanId ? _record : null);
+
+        public Task<IReadOnlyList<UpdateTransactionRecord>> ListAllAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<UpdateTransactionRecord>>([_record]);
     }
 
     private sealed class FakeUpdatePlanService : IUpdatePlanService

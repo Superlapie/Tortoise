@@ -119,6 +119,37 @@ public sealed class SqliteUpdateTransactionStore : IUpdateTransactionStore, IDis
         }
     }
 
+    public async Task<IReadOnlyList<UpdateTransactionRecord>> ListAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+        await _gate.WaitAsync(cancellationToken);
+
+        try
+        {
+            using var command = _connection!.CreateCommand();
+            command.CommandText =
+                """
+                SELECT transaction_id, plan_id, state, updated_at_utc, journal_json
+                FROM update_transactions
+                ORDER BY updated_at_utc DESC;
+                """;
+
+            var results = new List<UpdateTransactionRecord>();
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                results.Add(ReadTransaction(reader));
+            }
+
+            return results;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<UpdateTransactionRecord?> GetLatestForPlanAsync(
         Guid planId,
         CancellationToken cancellationToken = default)

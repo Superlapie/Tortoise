@@ -53,7 +53,7 @@ public sealed class DiagnosticsReportExporter : IDiagnosticsReportExporter
         await File.WriteAllTextAsync(outputPath, json, cancellationToken);
     }
 
-    internal static DiagnosticsReportDocument CreateDocument(ScanSessionRecord session)
+    public static DiagnosticsReportDocument CreateDocument(ScanSessionRecord session)
     {
         var result = session.Result;
         var summary = session.Summary;

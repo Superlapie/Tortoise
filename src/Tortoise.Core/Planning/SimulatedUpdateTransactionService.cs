@@ -66,6 +66,9 @@ public interface IUpdateTransactionStore
     Task<UpdateTransactionRecord?> GetLatestForPlanAsync(
         Guid planId,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<UpdateTransactionRecord>> ListAllAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record UpdateTransactionRecord(

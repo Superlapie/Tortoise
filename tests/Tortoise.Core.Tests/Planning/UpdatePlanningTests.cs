@@ -365,6 +365,10 @@ public sealed class SimulatedUpdateTransactionServiceTests
             Guid planId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<UpdateTransactionRecord?>(null);
+
+        public Task<IReadOnlyList<UpdateTransactionRecord>> ListAllAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<UpdateTransactionRecord>>([]);
     }
 
     internal sealed class FakeDeviceInventoryProvider : IDeviceInventoryProvider

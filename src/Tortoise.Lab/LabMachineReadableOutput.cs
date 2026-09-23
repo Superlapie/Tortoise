@@ -34,26 +34,60 @@ public static class LabMachineReadableOutput
         Console.WriteLine(JsonSerializer.Serialize(payload, JsonOptions));
     }
 
+    public static void WritePreflightJson(
+        StoredUpdatePlan plan,
+        UpdatePreflight preflight,
+        LabObservedInnerGateEvidence innerGateEvidence)
+    {
+        var payload = new LabVmPreflightJson(
+            PlanId: plan.PlanId,
+            IsBlocked: preflight.IsBlocked,
+            Checks: preflight.Checks
+                .Select(check => new LabPreflightCheckJson(
+                    check.Name,
+                    check.Result.ToString(),
+                    check.Message))
+                .ToList(),
+            InnerGateEvidence: innerGateEvidence);
+        Console.WriteLine(JsonSerializer.Serialize(payload, JsonOptions));
+    }
+
+    public static void WriteEvidenceSnapshotJson(LabEvidenceSnapshotJson snapshot) =>
+        Console.WriteLine(JsonSerializer.Serialize(snapshot, JsonOptions));
+
     public static void WriteInstallJson(
         VmDriverInstallResult result,
         UpdateTransactionRecord? transactionRecord,
-        LabInstallClassification classification)
+        LabInstallClassification classification,
+        LabObservedInnerGateEvidence innerGateEvidence,
+        StoredUpdatePlan? storedPlan = null)
     {
         var transaction = transactionRecord?.Transaction;
+        var postInstallRebootRequired = transaction?.State == UpdateTransactionState.AwaitingReboot
+            || result.PostInstallVerification.Result == UpdateVerificationResult.InstalledRestartRequired
+            || result.BrokerInstall?.RebootRequired == true;
+
         var payload = new LabVmInstallJson(
             PlanId: result.PlanId,
             TransactionId: transaction?.TransactionId,
             TransactionState: transaction?.State.ToString(),
             CompletedSuccessfully: result.CompletedSuccessfully,
             VerificationResult: result.PostInstallVerification.Result.ToString(),
-            RebootRequired: result.BrokerInstall?.RebootRequired == true
-                || result.PostInstallVerification.Result == UpdateVerificationResult.InstalledRestartRequired,
+            PostInstallRebootRequired: postInstallRebootRequired,
             AwaitingReboot: transaction?.State == UpdateTransactionState.AwaitingReboot,
             BrokerSucceeded: result.BrokerInstall?.Succeeded,
             BrokerResultCode: result.BrokerInstall?.ResultCode,
             BrokerErrorCode: result.BrokerInstall?.ErrorCode,
             Classification: classification.ToString(),
-            Summary: result.Summary);
+            Summary: result.Summary,
+            InnerGateEvidence: innerGateEvidence,
+            SelectedPlan: storedPlan is null
+                ? null
+                : new LabSelectedPlanJson(
+                    storedPlan.PlanId,
+                    storedPlan.RiskLevel.ToString(),
+                    storedPlan.Classification.ToString(),
+                    storedPlan.IsFrozen));
         Console.WriteLine(JsonSerializer.Serialize(payload, JsonOptions));
     }
 
@@ -65,13 +99,14 @@ public static class LabMachineReadableOutput
             TransactionState: null,
             CompletedSuccessfully: false,
             VerificationResult: null,
-            RebootRequired: false,
+            PostInstallRebootRequired: false,
             AwaitingReboot: false,
             BrokerSucceeded: false,
             BrokerResultCode: null,
             BrokerErrorCode: null,
             Classification: LabInstallClassification.PolicyBlocked.ToString(),
-            Summary: reason);
+            Summary: reason,
+            InnerGateEvidence: new LabObservedInnerGateEvidence());
         Console.WriteLine(JsonSerializer.Serialize(payload, JsonOptions));
     }
 
@@ -132,16 +167,35 @@ public sealed record LabStatusJson(
     string MutationEnvironment,
     string Reason);
 
+public sealed record LabPreflightCheckJson(
+    string Name,
+    string Result,
+    string Message);
+
+public sealed record LabVmPreflightJson(
+    Guid PlanId,
+    bool IsBlocked,
+    IReadOnlyList<LabPreflightCheckJson> Checks,
+    LabObservedInnerGateEvidence InnerGateEvidence);
+
+public sealed record LabSelectedPlanJson(
+    Guid PlanId,
+    string RiskLevel,
+    string Classification,
+    bool IsFrozen);
+
 public sealed record LabVmInstallJson(
     Guid PlanId,
     Guid? TransactionId,
     string? TransactionState,
     bool CompletedSuccessfully,
     string? VerificationResult,
-    bool RebootRequired,
+    bool PostInstallRebootRequired,
     bool AwaitingReboot,
     bool? BrokerSucceeded,
     int? BrokerResultCode,
     string? BrokerErrorCode,
     string Classification,
-    string Summary);
+    string Summary,
+    LabObservedInnerGateEvidence InnerGateEvidence,
+    LabSelectedPlanJson? SelectedPlan = null);

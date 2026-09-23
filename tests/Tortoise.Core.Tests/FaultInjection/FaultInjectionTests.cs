@@ -198,6 +198,11 @@ public sealed class FaultInjectionWorkflowServiceTests
             Guid planId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<UpdateTransactionRecord?>(_record?.Transaction.PlanId == planId ? _record : null);
+
+        public Task<IReadOnlyList<UpdateTransactionRecord>> ListAllAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<UpdateTransactionRecord>>(
+                _record is null ? [] : [_record]);
     }
 
     private sealed class FakeDeviceInventoryProvider : IDeviceInventoryProvider
@@ -367,6 +372,10 @@ public sealed class FaultReconciliationServiceTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult<UpdateTransactionRecord?>(
                 planId == _record.Transaction.PlanId ? _record : null);
+
+        public Task<IReadOnlyList<UpdateTransactionRecord>> ListAllAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<UpdateTransactionRecord>>([_record]);
     }
 }
 
