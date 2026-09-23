@@ -1,0 +1,278 @@
+using Tortoise.VmHarness.Domain;
+using Tortoise.VmHarness.Evidence;
+using Tortoise.VmHarness.Guest;
+using Tortoise.VmHarness.Providers;
+using Tortoise.VmHarness.Reporting;
+using Tortoise.VmHarness.Safety;
+using Tortoise.VmHarness.Scenarios;
+using Tortoise.VmHarness.Storage;
+
+namespace Tortoise.VmHarness.Orchestration;
+
+public sealed class VmHarnessOrchestrator
+{
+    private readonly IVmHarnessProvider _provider;
+    private readonly IVmHarnessRunStore _runStore;
+    private readonly IVmHarnessGuestTransport _guestTransport;
+    private readonly VmHarnessScenarioRegistry _scenarioRegistry;
+
+    public VmHarnessOrchestrator(
+        IVmHarnessProvider provider,
+        IVmHarnessRunStore runStore,
+        IVmHarnessGuestTransport guestTransport,
+        VmHarnessScenarioRegistry scenarioRegistry)
+    {
+        _provider = provider;
+        _runStore = runStore;
+        _guestTransport = guestTransport;
+        _scenarioRegistry = scenarioRegistry;
+    }
+
+    public async Task<VmHarnessOrchestrationResult> InspectAsync(
+        string vmName,
+        CancellationToken cancellationToken = default)
+    {
+        await _provider.EnsureHostRequirementsAsync(cancellationToken);
+        var target = await _provider.ResolveVmAsync(vmName, cancellationToken);
+        var options = new VmHarnessRunOptions(
+            vmName,
+            "inspect",
+            VmHarnessRunMode.Inspect,
+            VmHarnessConstants.DefaultArtifactsRoot,
+            VmHarnessGitMetadata.TryResolveCommitSha(),
+            TimeSpan.FromMinutes(5));
+        var run = await _runStore.CreateRunAsync(options, cancellationToken);
+        run = run with { HyperVVmId = target.HyperVVmId };
+        await _runStore.WriteJsonArtifactAsync(run, "run.json", run, cancellationToken);
+
+        await _runStore.WriteJsonArtifactAsync(run, "preflight.json", target, cancellationToken);
+        var reportPath = Path.Combine(_runStore.GetRunDirectory(run), "REPORT.md");
+        await _runStore.WriteTextArtifactAsync(
+            run,
+            "REPORT.md",
+            $"# Inspect\n\nVM `{target.Name}` resolved.\nHyper-V ID: `{target.HyperVVmId}`\nState: `{target.State}`\n",
+            cancellationToken);
+
+        return new VmHarnessOrchestrationResult(
+            run,
+            VmHarnessVerdict.DryRunComplete,
+            VmHarnessMutationOutcome.NotAttempted,
+            VmHarnessRestoreOutcome.Skipped,
+            null,
+            null,
+            reportPath,
+            _runStore.GetRunDirectory(run));
+    }
+
+    public Task<VmHarnessOrchestrationResult> RunAsync(
+        VmHarnessRunOptions options,
+        CancellationToken cancellationToken = default) =>
+        RunInternalAsync(options, cancellationToken);
+
+    private async Task<VmHarnessOrchestrationResult> RunInternalAsync(
+        VmHarnessRunOptions options,
+        CancellationToken cancellationToken)
+    {
+        var scenario = _scenarioRegistry.GetRequired(options.ScenarioId);
+        var executeMutation = options.Mode == VmHarnessRunMode.ExecuteDisposableVmMutation;
+        var proveCheckpoint = options.Mode == VmHarnessRunMode.ProveCheckpointRestore
+            || executeMutation;
+
+        await _provider.EnsureHostRequirementsAsync(cancellationToken);
+        var target = await _provider.ResolveVmAsync(options.VmName, cancellationToken);
+        var run = await _runStore.CreateRunAsync(options, cancellationToken);
+        run = run with { HyperVVmId = target.HyperVVmId };
+        await _runStore.WriteJsonArtifactAsync(run, "run.json", run, cancellationToken);
+
+        await _runStore.WriteJsonArtifactAsync(run, "preflight.json", target, cancellationToken);
+        await _runStore.WriteJsonArtifactAsync(
+            run,
+            "scenario.json",
+            scenario.Definition,
+            cancellationToken);
+
+        VmHarnessCheckpoint? checkpoint = null;
+        VmHarnessRestoreResult? restoreResult = null;
+        VmHarnessDualVmProofResult? dualProof = null;
+        VmHarnessSafetyGateResult? safetyGate = null;
+        VmHarnessScenarioResult? scenarioResult = null;
+        var mutationOutcome = VmHarnessMutationOutcome.NotAttempted;
+        var restoreOutcome = VmHarnessRestoreOutcome.Skipped;
+
+        try
+        {
+            if (proveCheckpoint)
+            {
+                var checkpointName = VmHarnessCheckpointNaming.CreateCheckpointName(run.RunId, DateTimeOffset.UtcNow);
+                checkpoint = await _provider.CreateCheckpointAsync(target, checkpointName, cancellationToken);
+                run = run with
+                {
+                    CheckpointName = checkpoint.Name,
+                    CheckpointId = checkpoint.Id,
+                    CheckpointCreatedAtUtc = checkpoint.CreatedAtUtc,
+                };
+                await _runStore.WriteJsonArtifactAsync(run, "checkpoint.json", checkpoint, cancellationToken);
+
+                var hostProof = new VmHarnessHostVmProof(
+                    target.HyperVVmId,
+                    target.Name,
+                    target.State,
+                    checkpoint);
+                VmHarnessGuestEnvironmentProof? guestProof = null;
+                if (_guestTransport.IsConfigured)
+                {
+                    guestProof = await _guestTransport.GetEnvironmentProofAsync(target.Name, cancellationToken);
+                    await _runStore.WriteJsonArtifactAsync(run, "guest-environment.json", guestProof, cancellationToken);
+                }
+
+                dualProof = VmHarnessDualVmProof.Evaluate(hostProof, guestProof);
+                await _runStore.WriteJsonArtifactAsync(run, "verification.json", dualProof, cancellationToken);
+
+                if (executeMutation && (dualProof.GuestProof is null || !dualProof.ProofsAgree))
+                {
+                    mutationOutcome = VmHarnessMutationOutcome.Blocked;
+                    scenarioResult = new VmHarnessScenarioResult(
+                        options.ScenarioId,
+                        VmHarnessVerdict.FailClosed,
+                        mutationOutcome,
+                        VmHarnessRestoreOutcome.NotAttempted,
+                        dualProof.BlockReason ?? "Host/guest VM proof failed.");
+                }
+                else
+                {
+                    safetyGate = VmHarnessSafetyGate.EvaluateForMutation(
+                        new VmHarnessSafetyEvaluationContext(
+                            TargetIsHyperVGuest: TriState.True,
+                            HostHyperVProofValid: TriState.True,
+                            CheckpointRecorded: TriState.True,
+                            GuestIsDisposableVm: guestProof is null
+                                ? TriState.Unknown
+                                : guestProof.IsDisposableVm ? TriState.True : TriState.False,
+                            LabMutationGatesSatisfied: guestProof?.MutationCapabilityEnabled == true
+                                ? TriState.True
+                                : guestProof is null ? TriState.Unknown : TriState.False));
+
+                    await _runStore.WriteJsonArtifactAsync(run, "broker-result.json", safetyGate, cancellationToken);
+
+                    if (executeMutation && !safetyGate.Allowed)
+                    {
+                        mutationOutcome = VmHarnessMutationOutcome.Blocked;
+                        scenarioResult = new VmHarnessScenarioResult(
+                            options.ScenarioId,
+                            VmHarnessVerdict.FailClosed,
+                            mutationOutcome,
+                            VmHarnessRestoreOutcome.NotAttempted,
+                            "Safety gate blocked mutation.");
+                    }
+                    else if (executeMutation)
+                    {
+                        var context = new VmHarnessScenarioContext
+                        {
+                            Run = run,
+                            Options = options,
+                            Target = target,
+                            Checkpoint = checkpoint,
+                            GuestProof = guestProof,
+                            GuestTransport = _guestTransport,
+                            RunStore = _runStore,
+                            ExecuteMutation = true,
+                            CancellationToken = cancellationToken,
+                        };
+                        scenarioResult = await scenario.ExecuteAsync(context, cancellationToken);
+                        mutationOutcome = scenarioResult.MutationOutcome;
+                    }
+                    else
+                    {
+                        scenarioResult = new VmHarnessScenarioResult(
+                            options.ScenarioId,
+                            VmHarnessVerdict.CheckpointRestoreProved,
+                            VmHarnessMutationOutcome.NotAttempted,
+                            VmHarnessRestoreOutcome.NotAttempted,
+                            "Checkpoint created; mutation not requested.");
+                    }
+                }
+
+                restoreResult = await _provider.RestoreCheckpointAsync(target, checkpoint, cancellationToken);
+                restoreOutcome = restoreResult.Succeeded
+                    ? VmHarnessRestoreOutcome.Succeeded
+                    : VmHarnessRestoreOutcome.Failed;
+                await _runStore.WriteJsonArtifactAsync(run, "restore-result.json", restoreResult, cancellationToken);
+
+                if (restoreResult.Succeeded)
+                {
+                    await _provider.WaitForVmRunningAsync(target, options.CommandTimeout, cancellationToken);
+                }
+            }
+            else
+            {
+                var context = new VmHarnessScenarioContext
+                {
+                    Run = run,
+                    Options = options,
+                    Target = target,
+                    GuestTransport = _guestTransport,
+                    RunStore = _runStore,
+                    ExecuteMutation = false,
+                    CancellationToken = cancellationToken,
+                };
+                scenarioResult = await scenario.ExecuteAsync(context, cancellationToken);
+                mutationOutcome = scenarioResult.MutationOutcome;
+            }
+        }
+        catch (Exception ex)
+        {
+            scenarioResult ??= new VmHarnessScenarioResult(
+                options.ScenarioId,
+                VmHarnessVerdict.HarnessError,
+                VmHarnessMutationOutcome.NotAttempted,
+                restoreOutcome,
+                ex.Message);
+        }
+
+        var verdict = VmHarnessVerdictClassifier.ClassifyFinal(
+            mutationOutcome,
+            restoreOutcome,
+            scenarioResult,
+            executeMutation);
+
+        if (restoreOutcome == VmHarnessRestoreOutcome.Failed)
+        {
+            verdict = VmHarnessVerdict.RestoreFailed;
+        }
+
+        var report = VmHarnessReportWriter.BuildReport(
+            run,
+            verdict,
+            mutationOutcome,
+            restoreOutcome,
+            scenarioResult,
+            restoreResult,
+            dualProof,
+            safetyGate);
+        await _runStore.WriteTextArtifactAsync(run, "REPORT.md", report, cancellationToken);
+
+        var manifest = new VmHarnessEvidenceManifest(
+            run.RunId,
+            run.ScenarioId,
+            run.Mode,
+            verdict,
+            mutationOutcome,
+            restoreOutcome,
+            DateTimeOffset.UtcNow,
+            Directory.Exists(_runStore.GetRunDirectory(run))
+                ? Directory.GetFiles(_runStore.GetRunDirectory(run)).Select(Path.GetFileName).Where(n => n is not null).Cast<string>().OrderBy(n => n).ToList()
+                : []);
+
+        await _runStore.FinalizeManifestAsync(run, manifest, cancellationToken);
+
+        return new VmHarnessOrchestrationResult(
+            run,
+            verdict,
+            mutationOutcome,
+            restoreOutcome,
+            scenarioResult,
+            restoreResult,
+            Path.Combine(_runStore.GetRunDirectory(run), "REPORT.md"),
+            _runStore.GetRunDirectory(run));
+    }
+}
