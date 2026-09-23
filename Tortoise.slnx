@@ -12,6 +12,10 @@
     <Project Path="src/Tortoise.Windows/Tortoise.Windows.csproj" />
     <Project Path="src/Tortoise.WindowsUpdate/Tortoise.WindowsUpdate.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Tortoise.VmHarness/Tortoise.VmHarness.csproj" />
+    <Project Path="tools/Tortoise.VerificationSummary/Tortoise.VerificationSummary.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Tortoise.ArchitectureTests/Tortoise.ArchitectureTests.csproj" />
     <Project Path="tests/Tortoise.Broker.Tests/Tortoise.Broker.Tests.csproj" />
@@ -23,5 +27,6 @@
     <Project Path="tests/Tortoise.WindowsUpdate.Tests/Tortoise.WindowsUpdate.Tests.csproj" />
     <Project Path="tests/Tortoise.BrokerPipeProbe/Tortoise.BrokerPipeProbe.csproj" />
     <Project Path="tests/Tortoise.MutationLockProbe/Tortoise.MutationLockProbe.csproj" />
+    <Project Path="tests/Tortoise.VmHarness.Tests/Tortoise.VmHarness.Tests.csproj" />
   </Folder>
 </Solution>
