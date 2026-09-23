@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-
 namespace Tortoise.WindowsUpdate.Tests;
 
 public sealed class WuaSdkIdlParityTests
@@ -22,8 +20,7 @@ public sealed class WuaSdkIdlParityTests
         foreach (var expectation in WuaComMetadataExpectations.All)
         {
             var interfaceName = expectation.InterfaceType.Name;
-            var sdkGuid = ExtractInterfaceGuid(idlText, interfaceName);
-            Assert.False(string.IsNullOrWhiteSpace(sdkGuid));
+            var sdkGuid = WuapiIdlParser.ExtractInterfaceGuid(idlText, interfaceName);
             Assert.Equal(expectation.InterfaceId, sdkGuid, ignoreCase: true);
         }
     }
@@ -43,11 +40,11 @@ public sealed class WuaSdkIdlParityTests
         }
 
         var idlText = File.ReadAllText(idlPath);
-        var updateCollectionSection = ExtractInterfaceSection(idlText, "IUpdateCollection");
-        var downloaderSection = ExtractInterfaceSection(idlText, "IUpdateDownloader");
-        var downloadResultSection = ExtractInterfaceSection(idlText, "IDownloadResult");
-        var installerSection = ExtractInterfaceSection(idlText, "IUpdateInstaller");
-        var installationResultSection = ExtractInterfaceSection(idlText, "IInstallationResult");
+        var updateCollectionSection = WuapiIdlParser.ExtractInterfaceSection(idlText, "IUpdateCollection");
+        var downloaderSection = WuapiIdlParser.ExtractInterfaceSection(idlText, "IUpdateDownloader");
+        var downloadResultSection = WuapiIdlParser.ExtractInterfaceSection(idlText, "IDownloadResult");
+        var installerSection = WuapiIdlParser.ExtractInterfaceSection(idlText, "IUpdateInstaller");
+        var installationResultSection = WuapiIdlParser.ExtractInterfaceSection(idlText, "IInstallationResult");
 
         Assert.Contains("HRESULT Add(", updateCollectionSection, StringComparison.Ordinal);
         Assert.Contains("[out, retval] LONG* retval", updateCollectionSection, StringComparison.Ordinal);
@@ -95,21 +92,4 @@ public sealed class WuaSdkIdlParityTests
 
         return null;
     }
-
-    private static string ExtractInterfaceGuid(string idlText, string interfaceName)
-    {
-        var pattern = $@"uuid\((?<guid>[0-9a-fA-F-]+)\)[\s\S]*?interface\s+{Regex.Escape(interfaceName)}\s*:";
-        var match = Regex.Match(idlText, pattern, RegexOptions.IgnoreCase);
-        return match.Success ? NormalizeGuid(match.Groups["guid"].Value) : string.Empty;
-    }
-
-    private static string ExtractInterfaceSection(string idlText, string interfaceName)
-    {
-        var pattern = $@"interface\s+{Regex.Escape(interfaceName)}\s*:\s*[\s\S]*?\n\}}";
-        var match = Regex.Match(idlText, pattern, RegexOptions.IgnoreCase);
-        return match.Success ? match.Value : string.Empty;
-    }
-
-    private static string NormalizeGuid(string rawGuid) =>
-        Guid.Parse(rawGuid).ToString("D").ToUpperInvariant();
 }
