@@ -128,30 +128,34 @@ If host and guest disagree → **BLOCK** (no inference about which side is corre
 
 ## Evidence directory
 
-Each run creates:
+Each run creates a directory under `artifacts/vm-harness/<run-id>/`.
 
-```text
-artifacts/vm-harness/<run-id>/
-  run.json                 (via orchestration artifacts)
-  preflight.json
-  plan.json
-  transactions-before.json (as scenarios evolve)
-  transactions-after.json
-  guest-environment.json
-  wua-before.json
-  wua-after.json
-  device-before.json
-  device-after.json
-  broker-result.json
-  verification.json
-  scenario.json
-  checkpoint.json
-  restore-result.json
-  *.log                    (sanitized)
-  REPORT.md
-```
+### Always emitted (when the corresponding phase runs)
 
-Secrets, capability tokens, and unnecessary credentials are redacted.
+| File | When |
+|------|------|
+| `run.json` | Every run |
+| `preflight.json` | Every run (host target + host pre-gate on checkpoint paths) |
+| `scenario.json` | Scenario runs |
+| `checkpoint.json` | Checkpoint create/restore paths |
+| `restore-result.json` | After checkpoint creation (cleanup phase) |
+| `guest-environment.json` | When guest transport is configured |
+| `verification.json` | Host/guest proof on checkpoint paths |
+| `plan.json` | Baseline candidate discovery |
+| `preflight.json` | Baseline preflight (guest) |
+| `broker-result.json` | Host pre-gate and/or inner Lab gate evidence |
+| `REPORT.md` | Every run |
+| `verification.json` (manifest) | Final evidence manifest |
+
+### Emitted by baseline mutation path when guest transport is configured
+
+| File | Content |
+|------|---------|
+| `device-before.json` / `device-after.json` | Sanitized diagnostics export snapshot |
+| `wua-before.json` / `wua-after.json` | Same export snapshot (WUA/recommendation sections) |
+| `transactions-before.json` / `transactions-after.json` | `tortoise recover list` output for the harness Lab DB |
+
+Dry-run and checkpoint-proof runs do not claim to emit the before/after mutation evidence set.
 
 ## Restore behavior
 

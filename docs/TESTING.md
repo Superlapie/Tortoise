@@ -66,7 +66,11 @@ Batch 16 adds developer-only VM harness tooling and additional harness unit test
 - PID binding across real Windows processes (`Category=Integration`)
 - Subprocess probe behavior and timeouts
 
-These integration tests are excluded from default CI via `--filter "Category!=Integration"`.
+The **`build`** workflow excludes `Category=Integration` and `Category=HyperVIntegration` for fast library validation and verification artifact generation.
+
+The dedicated **`test`** workflow runs the full normal suite on both Windows and Ubuntu, including the Windows process integration tests above.
+
+Hyper-V harness integration (`Category=HyperVIntegration`) remains opt-in/skipped unless a local disposable VM environment is explicitly configured.
 
 ### Architecture
 
