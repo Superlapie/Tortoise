@@ -1,5 +1,7 @@
 # Tortoise
 
+[![Build](https://github.com/Superlapie/Tortoise/actions/workflows/build.yml/badge.svg)](https://github.com/Superlapie/Tortoise/actions/workflows/build.yml)
+[![CodeQL](https://github.com/Superlapie/Tortoise/actions/workflows/codeql.yml/badge.svg)](https://github.com/Superlapie/Tortoise/actions/workflows/codeql.yml)
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg)](LICENSE)
 [![Commercial license available](https://img.shields.io/badge/commercial%20use-contact%20author-blue.svg)](COMMERCIAL.md)
 
@@ -9,14 +11,22 @@ Tortoise is a safety-first Windows driver inventory, health, update, recovery, a
 
 > Know what is installed. Know what Windows recommends. Know what changes before you approve them.
 
+## Safety & verification
+
+At commit [`9d046ec`](https://github.com/Superlapie/Tortoise/commit/9d046ec4d966539378a158ab2821ec6a2dd484ed), Tortoise passes **182** automated tests on both GitHub-hosted Windows and Ubuntu runners with **0** build warnings and **0** build errors. CodeQL successfully scans the C# codebase. Windows-specific tests include native device enumeration, Windows Update COM/SDK parity, broker PID binding, cross-process mutation locks, transaction/recovery behavior, and fail-closed security policy.
+
+**Passing tests reduce risk but do not make driver mutation risk-free.**
+
+See [docs/TESTING.md](docs/TESTING.md) for the full test taxonomy, CI source of truth, and candid limits of what automation proves. Batch 16 adds a developer-only disposable-VM harness ([docs/VM_HARNESS.md](docs/VM_HARNESS.md)) for gathering repeatable real-mutation evidence in checkpointed Hyper-V VMs — not on physical machines.
+
 ## Status
 
-**Version:** `0.1.0-alpha` (Stabilization + Batch 15)
+**Version:** `0.1.0-alpha` (Stabilization + Batch 16 VM harness)
 
 Current capabilities:
 
 - Solution and project structure
-- Global mutation-disabled safety gate
+- Global mutation-disabled safety gate in public builds
 - Domain models, policies, and transaction state machine
 - Windows device inventory via ConfigMgr/SetupAPI (read-only)
 - Driver store inventory via PnPUtil with device/package association
@@ -24,25 +34,29 @@ Current capabilities:
 - Recommendation engine combining devices, updates, and risk policy
 - Frozen update plans with staleness detection, preflight checks, and simulated transactions (no mutation)
 - End-to-end simulated mutation workflow: preflight → broker validation → simulated install → package and post-install verification
-- VM-gated real Windows Update driver install for one low-risk plan (disposable VM + explicit env markers only)
+- VM-gated real Windows Update driver install for one low-risk plan (`tortoise-lab` in disposable VM + explicit env markers only)
 - Fault injection scenarios for crash, reboot, network failure, and candidate disappearance with reconciliation guidance
 - Physical pilot readiness checklist, confirmation recording, and recovery documentation (no automatic install)
-- Stabilization pass: rebuilt Windows interop/WUA, broker v2 plan authority, `Tortoise.Lab` mutation isolation
+- Stabilization pass: rebuilt Windows interop/WUA, broker v2 plan authority, `Tortoise.Lab` / `tortoise-lab-broker` mutation isolation
 - Recovery preparation with before snapshots, export abstraction, and recovery manifest export
-- One-shot elevated broker process with named pipe IPC, nonce replay protection, and allowlisted operations (InstallDriver only in VM-gated mode)
+- One-shot elevated broker process with PID-bound named pipe IPC, nonce replay protection, and install-only boundary
+- Pending reboot fail-closed gate at broker boundary
 - WPF app with Overview, Devices, Updates, Safety, Pilot, History, Settings, and About pages
 - Light/dark themes, scan coordination, and persistent SQLite scan history
 - Redacted JSON diagnostics and recovery manifest export via CLI
-- `tortoise broker`, `tortoise recover`, `tortoise plan`, `tortoise workflow`, `tortoise vm`, `tortoise fault`, `tortoise pilot`, and full scan/planning CLI on Windows
+- `tortoise broker`, `tortoise recover`, `tortoise plan`, `tortoise workflow`, `tortoise fault`, `tortoise pilot`, and full scan/planning CLI on Windows
+- Developer-only Hyper-V VM harness for checkpointed disposable-VM mutation evidence (not in public releases)
 - Initial documentation and architecture decision records
-- CI scaffolding
+- CI scaffolding with machine-readable verification summaries from TRX output
 
 Current limitations:
 
 - No driver installation in public `tortoise` builds — use `tortoise-lab` in an isolated VM only
 - Real WUA install requires `tortoise-lab`, `TORTOISE_MUTATION_TESTS=1`, `TORTOISE_ALLOW_VM_INSTALL=1`, and detected guest VM
-- UAC elevation launcher not wired yet (broker serve/ping available for development)
+- Compile-time mutation isolation is incomplete — public code still has broader mutation dependencies than the target architecture
+- Plan store uses ACL hardening; cryptographic authorization/sealing remains future work
 - Driver package export remains disabled during read-only development
+- Physical-machine mutation is not validated; disposable-VM harness evidence is required before expanding the envelope
 
 ## Supported platform
 
@@ -67,7 +81,7 @@ Requirements:
 ```bash
 dotnet restore Tortoise.slnx
 dotnet build Tortoise.slnx -c Release
-dotnet test Tortoise.slnx -c Release
+dotnet test Tortoise.slnx -c Release --filter "Category!=Integration"
 ```
 
 ## Repository layout
@@ -81,8 +95,13 @@ src/
   Tortoise.WindowsUpdate/  Windows Update provider
   Tortoise.Security/       Security helpers
   Tortoise.Persistence/    SQLite persistence
-  Tortoise.Broker/         Elevated broker (future)
-  Tortoise.Cli/            Read-only CLI (future)
+  Tortoise.Broker/         Shared broker library
+  Tortoise.Lab/            Lab mutation CLI (not in public releases)
+  Tortoise.LabBroker/      Elevated Lab broker executable (not in public releases)
+  Tortoise.Cli/            Read-only public CLI
+tools/
+  Tortoise.VmHarness/      Developer-only disposable VM harness
+  Tortoise.VerificationSummary/  TRX → verification summary generator
 tests/
 docs/
 ```

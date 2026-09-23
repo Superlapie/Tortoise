@@ -28,14 +28,14 @@ This document tracks audit remediation after Batch 14. The accurate status is: *
 - Unmapped driver scan results produce `Unknown` device state (fail-closed), not `Current`
 - Signature/source provenance no longer fabricated as trusted Windows Update
 
-**Still open:** full WUA IDL audit of every remaining IID/DISPID; WUA download/install runtime proof requires disposable VM harness (not hosted CI).
+**Still open:** WUA download/install runtime proof at scale requires disposable VM harness runs (harness implemented in Batch 16; hosted CI does not execute real VM mutations). Managed WUA surface has SDK-backed `wuapi.idl` parity tests for mutation-path interfaces.
 
 ## Phase 2 — Broker trust
 
 - Broker protocol v2 with capability token and Windows session binding
 - Named-pipe ACL (current user only on Windows)
 - `BrokerPlanAuthority` reloads persisted plans and validates canonical hash + install payload
-- Elevated broker launch via UAC (`BrokerElevationLauncher`) wired into `tortoise-lab vm install`
+- Elevated broker launch via UAC (`BrokerElevationLauncher`) wired into `tortoise-lab vm install` (uses separate `tortoise-lab-broker` executable)
 - Elevated broker launch uses `tortoise-lab-broker` (compile-time split from public `Tortoise.Broker`)
 - One-shot elevated broker accepts a single authorized `InstallDriver` request (no startup Ping)
 - Broker fails closed without live verifier; re-validates stored plan risk/classification independently
@@ -43,7 +43,11 @@ This document tracks audit remediation after Batch 14. The accurate status is: *
 - WUA per-update `GetUpdateResult(0)` inspection; aggregate `SucceededWithErrors` no longer treated as success
 - `RealTransactionRecoveryService` for `AwaitingReboot` resume and ambiguous `Installing` reconciliation
 
-**Still open:** `%ProgramData%` plan store ACL / cryptographic sealing; pending reboot gate at broker boundary.
+- Pending reboot gate at broker boundary (`PendingRebootState`: blocks `Pending` and `Unknown`)
+- PID-bound one-shot install pipe; wrong-PID clients disconnected without response
+- Separate workflow lock (Lab client) vs servicing lock (elevated broker)
+
+**Still open:** `%ProgramData%` plan store cryptographic sealing (ACL hardening exists); compile-time public/Lab split beyond current Lab executables.
 
 ## Phase 3 — Plan integrity and recovery
 
@@ -52,7 +56,10 @@ This document tracks audit remediation after Batch 14. The accurate status is: *
 - Physical pilot checklist uses readiness-only preflight (mutation authorization evaluated separately)
 - Recovery preparation stale after 24h remains blocked
 
-## Phase 4 / Batch 15 — CI, tests, release
+## Phase 4 / Batch 15–16 — CI, tests, release, VM harness
+
+- Batch 16 adds developer-only `tools/Tortoise.VmHarness/` (Hyper-V checkpoint orchestration, not in public release ZIPs)
+- Public verification transparency: `docs/TESTING.md`, README safety section, TRX-based verification summaries
 
 - Fixed invalid GitHub Actions SHA pins (verified 40-character commit IDs from tagged releases)
 - Release validation runs on **both** `ubuntu-latest` and `windows-latest`
