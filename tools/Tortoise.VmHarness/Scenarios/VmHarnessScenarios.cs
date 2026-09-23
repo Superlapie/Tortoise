@@ -38,7 +38,9 @@ public abstract class VmHarnessScenarioBase : IVmHarnessScenario
             return null;
         }
 
-        return await context.GuestTransport.GetEnvironmentProofAsync(context.Target.Name, cancellationToken);
+        return await context.GuestTransport.GetEnvironmentProofAsync(
+            VmHarnessGuestTargetFactory.FromVmTarget(context.Target),
+            cancellationToken);
     }
 
     protected async Task WriteGuestStatusAsync(
@@ -87,11 +89,17 @@ public sealed class BaselineLowRiskInstallScenario : VmHarnessScenarioBase
         EvidenceCaptured:
         [
             "guest-environment.json",
-            "plan.json",
-            "preflight.json",
-            "broker-result.json",
+            "recommendation-before.json",
+            "wua-before.json",
+            "device-before.json",
             "transactions-before.json",
+            "plan.json",
+            "lab-preflight.json",
+            "inner-gate-evidence.json",
+            "broker-result.json",
             "transactions-after.json",
+            "device-after.json",
+            "wua-after.json",
         ],
         RequiresRealMutation: true);
 
@@ -120,17 +128,11 @@ public sealed class BaselineLowRiskInstallScenario : VmHarnessScenarioBase
         }
 
         var dbArg = VmHarnessLabDatabaseResolver.ToGuestDbArgument(context.LabDatabasePath);
-        var labEnv = new Dictionary<string, string>
-        {
-            ["TORTOISE_MUTATION_TESTS"] = "1",
-            ["TORTOISE_ALLOW_VM_INSTALL"] = "1",
-        };
-        var guestReportPath = Path.Combine(
-            Path.GetDirectoryName(context.LabDatabasePath!)!,
-            "harness-export.json");
+        var labEnv = VmHarnessLabEnvironment.MutationCommandEnvironment;
+        var guestTarget = VmHarnessGuestTargetFactory.FromVmTarget(context.Target);
 
         var recommend = await context.GuestTransport.ExecuteCommandAsync(
-            context.Target.Name,
+            guestTarget,
             VmHarnessGuestEvidenceCommands.Recommend(dbArg),
             labEnv,
             cancellationToken);
@@ -151,7 +153,7 @@ public sealed class BaselineLowRiskInstallScenario : VmHarnessScenarioBase
         }
 
         var planResult = await context.GuestTransport.ExecuteCommandAsync(
-            context.Target.Name,
+            guestTarget,
             VmHarnessGuestEvidenceCommands.PlanJson(dbArg),
             labEnv,
             cancellationToken);
@@ -166,7 +168,7 @@ public sealed class BaselineLowRiskInstallScenario : VmHarnessScenarioBase
             planResult.StandardOutput,
             cancellationToken);
 
-        var planIds = VmHarnessPlanJsonParser.ParsePlanIds(planResult.StandardOutput);
+        var planIds = VmHarnessPlanJsonParser.ParsePlans(planResult.StandardOutput);
         if (planIds.Count == 0)
         {
             return NoEligibleCandidate(
@@ -174,44 +176,74 @@ public sealed class BaselineLowRiskInstallScenario : VmHarnessScenarioBase
                 "No actionable update plans were created in the guest VM.");
         }
 
+        var selectedPlanId = VmHarnessPlanJsonParser.SelectEligibleBaselinePlan(planResult.StandardOutput);
+        if (selectedPlanId is null)
+        {
+            return NoEligibleCandidate(
+                Definition.Id,
+                "No low-risk Windows-recommended plan candidate was available.");
+        }
+
         if (!context.ExecuteMutation)
         {
             return DryRunResult(
                 Definition.Id,
-                $"Dry-run complete: discovered {planIds.Count} plan(s); mutation not requested.");
+                $"Dry-run complete: discovered {planIds.Count} plan(s), {planIds.Count(p => string.Equals(p.RiskLevel, "Low", StringComparison.OrdinalIgnoreCase) && string.Equals(p.Classification, "WindowsRecommended", StringComparison.OrdinalIgnoreCase))} eligible; mutation not requested.");
         }
 
         await VmHarnessGuestEvidenceCollector.CaptureBeforeMutationAsync(
             context,
-            guestReportPath,
             cancellationToken);
 
-        var selectedPlanId = planIds[0];
         var preflight = await context.GuestTransport.ExecuteCommandAsync(
-            context.Target.Name,
-            VmHarnessGuestEvidenceCommands.Preflight(selectedPlanId, dbArg),
+            guestTarget,
+            VmHarnessGuestEvidenceCommands.LabPreflightJson(selectedPlanId.Value, dbArg),
             labEnv,
             cancellationToken);
         await context.RunStore.WriteTextArtifactAsync(
             context.Run,
-            "preflight.json",
-            $"{preflight.StandardOutput}\n{preflight.StandardError}",
+            "lab-preflight.json",
+            preflight.StandardOutput.Trim(),
             cancellationToken);
 
-        if (preflight.ExitCode != 0)
+        HarnessLabVmPreflightJson? preflightJson = null;
+        if (preflight.ExitCode == 0)
+        {
+            try
+            {
+                preflightJson = HarnessLabJsonParser.ParsePreflightJson(preflight.StandardOutput.Trim());
+            }
+            catch
+            {
+                // Fall through to blocked handling below.
+            }
+        }
+
+        if (preflight.ExitCode != 0 || preflightJson?.IsBlocked == true)
         {
             return new VmHarnessScenarioResult(
                 Definition.Id,
                 VmHarnessVerdict.NoEligibleCandidate,
                 VmHarnessMutationOutcome.Blocked,
                 VmHarnessRestoreOutcome.Skipped,
-                "Preflight did not pass for discovered plan; no mutation attempted.",
-                selectedPlanId.ToString());
+                "Lab preflight did not pass for the selected eligible plan; no mutation attempted.",
+                selectedPlanId.Value.ToString());
+        }
+
+        if (preflightJson?.InnerGateEvidence is not null)
+        {
+            var preflightGate = VmHarnessInnerLabGate.EvaluateFromLabEvidence(
+                LabInstallResultClassifier.MapObservedInnerGate(preflightJson.InnerGateEvidence));
+            await context.RunStore.WriteJsonArtifactAsync(
+                context.Run,
+                "inner-gate-evidence.json",
+                preflightGate,
+                cancellationToken);
         }
 
         var install = await context.GuestTransport.ExecuteCommandAsync(
-            context.Target.Name,
-            VmHarnessGuestEvidenceCommands.LabInstallJson(selectedPlanId, dbArg),
+            guestTarget,
+            VmHarnessGuestEvidenceCommands.LabInstallJson(selectedPlanId.Value, dbArg),
             labEnv,
             cancellationToken);
 
@@ -228,7 +260,7 @@ public sealed class BaselineLowRiskInstallScenario : VmHarnessScenarioBase
                 VmHarnessMutationOutcome.Failed,
                 VmHarnessRestoreOutcome.NotAttempted,
                 "Lab install did not return structured JSON.",
-                selectedPlanId.ToString());
+                selectedPlanId.Value.ToString());
         }
 
         await context.RunStore.WriteTextArtifactAsync(
@@ -239,11 +271,16 @@ public sealed class BaselineLowRiskInstallScenario : VmHarnessScenarioBase
 
         await VmHarnessGuestEvidenceCollector.CaptureAfterMutationAsync(
             context,
-            guestReportPath,
             cancellationToken);
 
         var innerGate = VmHarnessInnerLabGate.EvaluateFromLabEvidence(
-            LabInstallResultClassifier.BuildInnerGateEvidence(installJson));
+            LabInstallResultClassifier.MapObservedInnerGate(installJson.InnerGateEvidence));
+        await context.RunStore.WriteJsonArtifactAsync(
+            context.Run,
+            "inner-gate-evidence.json",
+            innerGate,
+            cancellationToken);
+
         var (verdict, mutationOutcome) = LabInstallResultClassifier.Classify(installJson);
 
         return new VmHarnessScenarioResult(
@@ -252,7 +289,7 @@ public sealed class BaselineLowRiskInstallScenario : VmHarnessScenarioBase
             mutationOutcome,
             VmHarnessRestoreOutcome.NotAttempted,
             installJson.Summary,
-            selectedPlanId.ToString(),
+            selectedPlanId.Value.ToString(),
             installJson.TransactionId?.ToString(),
             new Dictionary<string, string>
             {

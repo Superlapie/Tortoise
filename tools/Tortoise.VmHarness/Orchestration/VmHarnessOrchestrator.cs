@@ -12,6 +12,7 @@ namespace Tortoise.VmHarness.Orchestration;
 public sealed class VmHarnessOrchestrator
 {
     private static readonly TimeSpan RestoreCleanupTimeout = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan FinalizationTimeout = TimeSpan.FromMinutes(2);
 
     private readonly IVmHarnessProvider _provider;
     private readonly IVmHarnessRunStore _runStore;
@@ -128,7 +129,9 @@ public sealed class VmHarnessOrchestrator
                 VmHarnessGuestEnvironmentProof? guestProof = null;
                 if (_guestTransport.IsConfigured)
                 {
-                    guestProof = await _guestTransport.GetEnvironmentProofAsync(target.Name, cancellationToken);
+                    guestProof = await _guestTransport.GetEnvironmentProofAsync(
+                        VmHarnessGuestTargetFactory.FromVmTarget(target),
+                        cancellationToken);
                     await _runStore.WriteJsonArtifactAsync(run, "guest-environment.json", guestProof, cancellationToken);
                 }
 
@@ -147,7 +150,7 @@ public sealed class VmHarnessOrchestrator
                             ? TriState.True
                             : guestProof is null ? TriState.Unknown : TriState.False));
 
-                await _runStore.WriteJsonArtifactAsync(run, "preflight.json", hostPreGate, cancellationToken);
+                await _runStore.WriteJsonArtifactAsync(run, "host-pregate.json", hostPreGate, cancellationToken);
 
                 if (executeMutation && !dualProof.ProofsAgree)
                 {
@@ -250,7 +253,7 @@ public sealed class VmHarnessOrchestrator
                     if (_guestTransport.IsConfigured)
                     {
                         var guestReachable = await _guestTransport.ProbeReachabilityAsync(
-                            target.Name,
+                            VmHarnessGuestTargetFactory.FromVmTarget(target),
                             options.CommandTimeout,
                             cleanupCts.Token);
                         restoreResult = restoreResult with { GuestReachable = guestReachable };
@@ -283,11 +286,7 @@ public sealed class VmHarnessOrchestrator
 
         if (innerLabGate is not null)
         {
-            await _runStore.WriteJsonArtifactAsync(run, "broker-result.json", innerLabGate, cancellationToken);
-        }
-        else if (hostPreGate is not null)
-        {
-            await _runStore.WriteJsonArtifactAsync(run, "broker-result.json", hostPreGate, cancellationToken);
+            await _runStore.WriteJsonArtifactAsync(run, "inner-gate-evidence.json", innerLabGate, CancellationToken.None);
         }
 
         var verdict = VmHarnessVerdictClassifier.ClassifyFinal(
@@ -301,30 +300,70 @@ public sealed class VmHarnessOrchestrator
             verdict = VmHarnessVerdict.RestoreFailed;
         }
 
-        var report = VmHarnessReportWriter.BuildReport(
-            run,
-            verdict,
-            mutationOutcome,
-            restoreOutcome,
-            scenarioResult,
-            restoreResult,
-            dualProof,
-            hostPreGate);
-        await _runStore.WriteTextArtifactAsync(run, "REPORT.md", report, cancellationToken);
+        using var finalizationCts = new CancellationTokenSource(FinalizationTimeout);
+        var finalizationToken = finalizationCts.Token;
 
-        var manifest = new VmHarnessEvidenceManifest(
-            run.RunId,
-            run.ScenarioId,
-            run.Mode,
-            verdict,
-            mutationOutcome,
-            restoreOutcome,
-            DateTimeOffset.UtcNow,
-            Directory.Exists(_runStore.GetRunDirectory(run))
-                ? Directory.GetFiles(_runStore.GetRunDirectory(run)).Select(Path.GetFileName).Where(n => n is not null).Cast<string>().OrderBy(n => n).ToList()
-                : []);
+        try
+        {
+            var report = VmHarnessReportWriter.BuildReport(
+                run,
+                verdict,
+                mutationOutcome,
+                restoreOutcome,
+                scenarioResult,
+                restoreResult,
+                dualProof,
+                hostPreGate);
+            await _runStore.WriteTextArtifactAsync(run, "REPORT.md", report, finalizationToken);
 
-        await _runStore.FinalizeManifestAsync(run, manifest, cancellationToken);
+            var manifest = new VmHarnessEvidenceManifest(
+                run.RunId,
+                run.ScenarioId,
+                run.Mode,
+                verdict,
+                mutationOutcome,
+                restoreOutcome,
+                DateTimeOffset.UtcNow,
+                Directory.Exists(_runStore.GetRunDirectory(run))
+                    ? Directory.GetFiles(_runStore.GetRunDirectory(run)).Select(Path.GetFileName).Where(n => n is not null).Cast<string>().OrderBy(n => n).ToList()
+                    : []);
+
+            await _runStore.FinalizeManifestAsync(run, manifest, finalizationToken);
+        }
+        catch (OperationCanceledException) when (finalizationToken.IsCancellationRequested)
+        {
+            try
+            {
+                var report = VmHarnessReportWriter.BuildReport(
+                    run,
+                    verdict,
+                    mutationOutcome,
+                    restoreOutcome,
+                    scenarioResult,
+                    restoreResult,
+                    dualProof,
+                    hostPreGate);
+                await _runStore.WriteTextArtifactAsync(run, "REPORT.md", report, CancellationToken.None);
+
+                var manifest = new VmHarnessEvidenceManifest(
+                    run.RunId,
+                    run.ScenarioId,
+                    run.Mode,
+                    verdict,
+                    mutationOutcome,
+                    restoreOutcome,
+                    DateTimeOffset.UtcNow,
+                    Directory.Exists(_runStore.GetRunDirectory(run))
+                        ? Directory.GetFiles(_runStore.GetRunDirectory(run)).Select(Path.GetFileName).Where(n => n is not null).Cast<string>().OrderBy(n => n).ToList()
+                        : []);
+
+                await _runStore.FinalizeManifestAsync(run, manifest, CancellationToken.None);
+            }
+            catch
+            {
+                // Best effort only; restoration must never depend on reporting.
+            }
+        }
 
         return new VmHarnessOrchestrationResult(
             run,

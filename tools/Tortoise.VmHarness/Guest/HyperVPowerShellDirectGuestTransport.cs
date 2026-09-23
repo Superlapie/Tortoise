@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using Tortoise.VmHarness.Domain;
@@ -21,30 +20,30 @@ public sealed class HyperVPowerShellDirectGuestTransport : IVmHarnessGuestTransp
         && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TORTOISE_VM_HARNESS_GUEST_PASSWORD"));
 
     public async Task<VmHarnessGuestEnvironmentProof> GetEnvironmentProofAsync(
-        string vmName,
+        VmHarnessGuestTarget target,
         CancellationToken cancellationToken = default)
     {
         var result = await ExecuteRemoteAsync(
-            vmName,
+            target,
             "tortoise-lab status --json",
-            null,
+            VmHarnessLabEnvironment.MutationCommandEnvironment,
             cancellationToken);
         var status = HarnessLabJsonParser.ParseStatusJson(result.StandardOutput.Trim());
         return VmHarnessGuestStatusParser.FromLabStatusJson(status, result.StandardOutput.Trim());
     }
 
     public async Task<VmHarnessGuestCommandResult> ExecuteCommandAsync(
-        string vmName,
+        VmHarnessGuestTarget target,
         string command,
         IReadOnlyDictionary<string, string>? environmentVariables = null,
         CancellationToken cancellationToken = default)
     {
-        var remote = await ExecuteRemoteAsync(vmName, command, environmentVariables, cancellationToken);
+        var remote = await ExecuteRemoteAsync(target, command, environmentVariables, cancellationToken);
         return VmHarnessGuestCommandResult.FromRemote(remote);
     }
 
     public async Task<bool> ProbeReachabilityAsync(
-        string vmName,
+        VmHarnessGuestTarget target,
         TimeSpan timeout,
         CancellationToken cancellationToken = default)
     {
@@ -60,7 +59,7 @@ public sealed class HyperVPowerShellDirectGuestTransport : IVmHarnessGuestTransp
             try
             {
                 var result = await ExecuteRemoteAsync(
-                    vmName,
+                    target,
                     "cmd /c echo tortoise-harness-probe",
                     null,
                     cancellationToken);
@@ -82,7 +81,7 @@ public sealed class HyperVPowerShellDirectGuestTransport : IVmHarnessGuestTransp
     }
 
     private async Task<VmHarnessRemoteCommandResult> ExecuteRemoteAsync(
-        string vmName,
+        VmHarnessGuestTarget target,
         string command,
         IReadOnlyDictionary<string, string>? environmentVariables,
         CancellationToken cancellationToken)
@@ -93,7 +92,11 @@ public sealed class HyperVPowerShellDirectGuestTransport : IVmHarnessGuestTransp
                 "Guest transport is not configured. Set TORTOISE_VM_HARNESS_GUEST_USER and TORTOISE_VM_HARNESS_GUEST_PASSWORD.");
         }
 
-        var escapedVm = EscapeSingleQuoted(vmName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(target.Name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(target.HyperVVmId);
+
+        var escapedVmId = EscapeSingleQuoted(target.HyperVVmId);
+        var escapedVmName = EscapeSingleQuoted(target.Name);
         var escapedCommand = EscapePowerShellSingleQuoted(command);
         var envScript = BuildGuestEnvironmentScript(environmentVariables);
         var script = $$"""
@@ -101,10 +104,15 @@ public sealed class HyperVPowerShellDirectGuestTransport : IVmHarnessGuestTransp
             if ([string]::IsNullOrWhiteSpace($env:TORTOISE_VM_HARNESS_GUEST_USER) -or [string]::IsNullOrWhiteSpace($env:TORTOISE_VM_HARNESS_GUEST_PASSWORD)) {
               throw 'Guest credentials are not available to the host PowerShell process environment.'
             }
+            Import-Module Hyper-V -ErrorAction Stop | Out-Null
+            $vm = Get-VM -Id '{{escapedVmId}}' -ErrorAction Stop
+            if ($vm.Name -cne '{{escapedVmName}}') {
+              throw "Hyper-V VM ID/name binding mismatch for guest transport (expected '{{escapedVmName}}', got '$($vm.Name)')."
+            }
             $sec = ConvertTo-SecureString $env:TORTOISE_VM_HARNESS_GUEST_PASSWORD -AsPlainText -Force
             $cred = New-Object System.Management.Automation.PSCredential($env:TORTOISE_VM_HARNESS_GUEST_USER, $sec)
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
-            $remote = Invoke-Command -VMName '{{escapedVm}}' -Credential $cred -ScriptBlock {
+            $remote = Invoke-Command -VMName $vm.Name -Credential $cred -ScriptBlock {
               param([string]$CommandLine, [string]$EnvSetup)
               if (-not [string]::IsNullOrWhiteSpace($EnvSetup)) {
                 Invoke-Expression $EnvSetup
@@ -170,19 +178,19 @@ public sealed class UnconfiguredGuestTransport : IVmHarnessGuestTransport
     public bool IsConfigured => false;
 
     public Task<VmHarnessGuestEnvironmentProof> GetEnvironmentProofAsync(
-        string vmName,
+        VmHarnessGuestTarget target,
         CancellationToken cancellationToken = default) =>
         throw new InvalidOperationException("Guest transport is not configured.");
 
     public Task<VmHarnessGuestCommandResult> ExecuteCommandAsync(
-        string vmName,
+        VmHarnessGuestTarget target,
         string command,
         IReadOnlyDictionary<string, string>? environmentVariables = null,
         CancellationToken cancellationToken = default) =>
         throw new InvalidOperationException("Guest transport is not configured.");
 
     public Task<bool> ProbeReachabilityAsync(
-        string vmName,
+        VmHarnessGuestTarget target,
         TimeSpan timeout,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(false);

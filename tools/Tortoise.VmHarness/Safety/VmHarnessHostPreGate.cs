@@ -81,7 +81,7 @@ public static class VmHarnessInnerLabGate
         "Candidate has authoritative hardware-ID match",
         "BrowseOnly is known and false",
         "Package is downloaded and verified before elevation",
-        "Pending reboot state is known and NotPending",
+        "Pre-install pending reboot state is known and NotPending",
         "Broker final live TOCTOU checks passed",
         "Servicing lock was acquired for install",
         "No restricted device category is involved",
@@ -111,7 +111,7 @@ public static class VmHarnessInnerLabGate
         Evaluate(4, evidence.AuthoritativeHardwareIdMatch, satisfied, failed, unknown);
         Evaluate(5, evidence.BrowseOnlyKnownAndFalse, satisfied, failed, unknown);
         Evaluate(6, evidence.PackageDownloadedAndVerified, satisfied, failed, unknown);
-        Evaluate(7, evidence.PendingRebootNotPending, satisfied, failed, unknown);
+        Evaluate(7, evidence.PreInstallPendingRebootNotPending, satisfied, failed, unknown);
         Evaluate(8, evidence.BrokerToctouChecksPassed, satisfied, failed, unknown);
         Evaluate(9, evidence.ServicingLockAcquired, satisfied, failed, unknown);
         Evaluate(10, evidence.NoRestrictedDeviceCategory, satisfied, failed, unknown);
@@ -154,7 +154,7 @@ public sealed record VmHarnessInnerLabGateEvidence(
     TriState AuthoritativeHardwareIdMatch = TriState.Unknown,
     TriState BrowseOnlyKnownAndFalse = TriState.Unknown,
     TriState PackageDownloadedAndVerified = TriState.Unknown,
-    TriState PendingRebootNotPending = TriState.Unknown,
+    TriState PreInstallPendingRebootNotPending = TriState.Unknown,
     TriState BrokerToctouChecksPassed = TriState.Unknown,
     TriState ServicingLockAcquired = TriState.Unknown,
     TriState NoRestrictedDeviceCategory = TriState.Unknown);
