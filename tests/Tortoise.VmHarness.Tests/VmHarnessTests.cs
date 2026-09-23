@@ -1,10 +1,11 @@
+using System.IO.Compression;
 using System.Runtime.Versioning;
-using System.Xml.Linq;
 using Tortoise.VmHarness.Domain;
 using Tortoise.VmHarness.Evidence;
 using Tortoise.VmHarness.Guest;
 using Tortoise.VmHarness.Orchestration;
 using Tortoise.VmHarness.Providers;
+using Tortoise.VmHarness.Providers.HyperV;
 using Tortoise.VmHarness.Safety;
 using Tortoise.VmHarness.Scenarios;
 using Tortoise.VmHarness.Tests.Fakes;
@@ -76,12 +77,19 @@ public sealed class VmHarnessRedactorTests
 public sealed class VmHarnessPlanJsonParserTests
 {
     [Fact]
-    public void ParsePlanIds_FindsGuidsFromJson()
+    public void SelectEligibleBaselinePlan_ReturnsLowRiskWindowsRecommendedPlan()
     {
-        var ids = VmHarnessPlanJsonParser.ParsePlanIds(
+        var planId = VmHarnessPlanJsonParser.SelectEligibleBaselinePlan(
             "{\"plans\":[{\"planId\":\"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\",\"riskLevel\":\"Low\",\"classification\":\"WindowsRecommended\"}]}");
-        Assert.Single(ids);
-        Assert.Equal(Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"), ids[0]);
+        Assert.Equal(Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"), planId);
+    }
+
+    [Fact]
+    public void SelectEligibleBaselinePlan_RejectsIneligibleFirstPlan()
+    {
+        var planId = VmHarnessPlanJsonParser.SelectEligibleBaselinePlan(
+            "{\"plans\":[{\"planId\":\"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\",\"riskLevel\":\"High\",\"classification\":\"ReviewRequired\"}]}");
+        Assert.Null(planId);
     }
 }
 
@@ -102,10 +110,20 @@ public sealed class LabInstallResultClassifierTests
             0,
             null,
             "AwaitingReboot",
-            "reboot required"));
+            "reboot required",
+            new HarnessLabObservedInnerGateJson(
+                PreInstallPendingRebootNotPending: "True")));
 
         Assert.Equal(VmHarnessVerdict.RecoveryRequired, verdict);
         Assert.Equal(VmHarnessMutationOutcome.Inconclusive, outcome);
+    }
+
+    [Fact]
+    public void MapObservedInnerGate_DoesNotInferTrueFromMissingEvidence()
+    {
+        var evidence = LabInstallResultClassifier.MapObservedInnerGate(null);
+        Assert.Equal(TriState.Unknown, evidence.PlanFrozen);
+        Assert.Equal(TriState.Unknown, evidence.BrokerToctouChecksPassed);
     }
 }
 
@@ -313,34 +331,102 @@ public sealed class VmHarnessOrchestratorTests
 
         Assert.Equal(VmHarnessVerdict.NoEligibleCandidate, result.Verdict);
     }
+
+    [Fact]
+    public async Task IneligiblePlanOnly_ReturnsNoEligibleCandidate()
+    {
+        var provider = new FakeVmHarnessProvider();
+        var store = new InMemoryRunStore();
+        var guest = new FakeGuestTransport
+        {
+            PlanJson = "{\"plans\":[{\"planId\":\"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\",\"riskLevel\":\"High\",\"classification\":\"ReviewRequired\"}]}",
+        };
+        var orchestrator = new VmHarnessOrchestrator(
+            provider,
+            store,
+            guest,
+            VmHarnessScenarioRegistry.CreateDefault());
+
+        var result = await orchestrator.RunAsync(new VmHarnessRunOptions(
+            "lab-vm",
+            "baseline-low-risk-install",
+            VmHarnessRunMode.DryRun,
+            "artifacts/vm-harness",
+            "abc123",
+            TimeSpan.FromMinutes(1)));
+
+        Assert.Equal(VmHarnessVerdict.NoEligibleCandidate, result.Verdict);
+    }
 }
 
 [Trait("Category", "HyperVIntegration")]
+[SupportedOSPlatform("windows")]
 public sealed class HyperVIntegrationTests
 {
-    [Fact(Skip = "Opt-in Hyper-V integration test; set TORTOISE_HARNESS_VM to the exact VM name.")]
+    [Fact]
     public async Task OptIn_ResolveCreateRestoreLifecycle()
     {
-        if (!OperatingSystem.IsWindows())
+        if (!HyperVIntegrationEnvironment.TryGetConfiguration(out var vmName))
         {
             return;
         }
 
-        var vmName = Environment.GetEnvironmentVariable("TORTOISE_HARNESS_VM");
-        Assert.False(string.IsNullOrWhiteSpace(vmName));
-
-        await RunHyperVLifecycleAsync(vmName!);
+        await RunHyperVLifecycleAsync(vmName);
     }
 
     [SupportedOSPlatform("windows")]
     private static async Task RunHyperVLifecycleAsync(string vmName)
     {
-        var provider = new Tortoise.VmHarness.Providers.HyperV.HyperVVmHarnessProvider();
+        var provider = new HyperVVmHarnessProvider();
         await provider.EnsureHostRequirementsAsync();
         var target = await provider.ResolveVmAsync(vmName);
-        target = await provider.VerifyTargetIdentityAsync(target);
-        var checkpoint = await provider.CreateCheckpointAsync(target, $"TortoiseHarness-test-{Guid.NewGuid():N}");
-        var restore = await provider.RestoreCheckpointAsync(target, checkpoint);
+        var boundTarget = await provider.VerifyTargetIdentityAsync(target);
+        Assert.Equal(target.HyperVVmId, boundTarget.HyperVVmId);
+
+        var checkpoint = await provider.CreateCheckpointAsync(
+            boundTarget,
+            $"TortoiseHarness-test-{Guid.NewGuid():N}");
+        Assert.Equal(boundTarget.HyperVVmId, checkpoint.HyperVVmId);
+
+        var restore = await provider.RestoreCheckpointAsync(boundTarget, checkpoint);
         Assert.True(restore.HyperVStateRunning);
+
+        if (HyperVIntegrationEnvironment.TryGetGuestTransport(out var guestTransport))
+        {
+            var guestTarget = VmHarnessGuestTargetFactory.FromVmTarget(boundTarget);
+            var reachable = await guestTransport.ProbeReachabilityAsync(
+                guestTarget,
+                TimeSpan.FromMinutes(2));
+            Assert.True(reachable);
+        }
+    }
+}
+
+internal static class HyperVIntegrationEnvironment
+{
+    [SupportedOSPlatform("windows")]
+    public static bool TryGetConfiguration(out string vmName)
+    {
+        vmName = string.Empty;
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        var configuredVmName = Environment.GetEnvironmentVariable("TORTOISE_HARNESS_VM");
+        if (string.IsNullOrWhiteSpace(configuredVmName))
+        {
+            return false;
+        }
+
+        vmName = configuredVmName;
+        return true;
+    }
+
+    [SupportedOSPlatform("windows")]
+    public static bool TryGetGuestTransport(out IVmHarnessGuestTransport guestTransport)
+    {
+        guestTransport = new HyperVPowerShellDirectGuestTransport();
+        return guestTransport.IsConfigured;
     }
 }

@@ -1,4 +1,3 @@
-using System.Xml.Linq;
 using Tortoise.VmHarness.Domain;
 using Tortoise.VmHarness.Guest;
 using Tortoise.VmHarness.Providers;
@@ -106,7 +105,7 @@ internal sealed class FakeGuestTransport : IVmHarnessGuestTransport
         "{\"plans\":[{\"planId\":\"11111111-1111-1111-1111-111111111111\",\"riskLevel\":\"Low\",\"classification\":\"WindowsRecommended\"}]}";
 
     public Task<VmHarnessGuestEnvironmentProof> GetEnvironmentProofAsync(
-        string vmName,
+        VmHarnessGuestTarget target,
         CancellationToken cancellationToken = default)
     {
         if (ThrowOnStatus)
@@ -121,15 +120,32 @@ internal sealed class FakeGuestTransport : IVmHarnessGuestTransport
             ReportMutationEnabled,
             "DisposableVm",
             "enabled",
-            "{\"isDisposableVm\":true}"));
+            "{\"isDisposableVm\":true,\"mutationTestsEnabled\":true,\"vmInstallExplicitlyAllowed\":true,\"mutationCapabilityEnabled\":true}"));
     }
 
     public Task<VmHarnessGuestCommandResult> ExecuteCommandAsync(
-        string vmName,
+        VmHarnessGuestTarget target,
         string command,
         IReadOnlyDictionary<string, string>? environmentVariables = null,
         CancellationToken cancellationToken = default)
     {
+        if (command.Contains("tortoise-lab status", StringComparison.OrdinalIgnoreCase))
+        {
+            var mutationEnabled = environmentVariables is not null
+                && environmentVariables.TryGetValue("TORTOISE_MUTATION_TESTS", out var mutationTests)
+                && mutationTests == "1"
+                && environmentVariables.TryGetValue("TORTOISE_ALLOW_VM_INSTALL", out var allowInstall)
+                && allowInstall == "1";
+
+            return Task.FromResult(new VmHarnessGuestCommandResult(
+                0,
+                mutationEnabled
+                    ? "{\"isLabBuild\":true,\"isDisposableVm\":true,\"mutationTestsEnabled\":true,\"vmInstallExplicitlyAllowed\":true,\"mutationCapabilityEnabled\":true,\"mutationEnvironment\":\"DisposableVm\",\"reason\":\"enabled\"}"
+                    : "{\"isLabBuild\":true,\"isDisposableVm\":true,\"mutationTestsEnabled\":false,\"vmInstallExplicitlyAllowed\":false,\"mutationCapabilityEnabled\":false,\"mutationEnvironment\":\"ReadOnly\",\"reason\":\"blocked\"}",
+                string.Empty,
+                TimeSpan.FromSeconds(1)));
+        }
+
         if (command.Contains("tortoise recommend", StringComparison.OrdinalIgnoreCase))
         {
             return Task.FromResult(new VmHarnessGuestCommandResult(0, "recommend ok", string.Empty, TimeSpan.FromSeconds(1)));
@@ -140,32 +156,38 @@ internal sealed class FakeGuestTransport : IVmHarnessGuestTransport
             return Task.FromResult(new VmHarnessGuestCommandResult(0, PlanJson, string.Empty, TimeSpan.FromSeconds(1)));
         }
 
-        if (command.Contains("tortoise preflight", StringComparison.OrdinalIgnoreCase))
+        if (command.Contains("tortoise-lab vm preflight", StringComparison.OrdinalIgnoreCase))
         {
-            return Task.FromResult(new VmHarnessGuestCommandResult(0, "preflight ok", string.Empty, TimeSpan.FromSeconds(1)));
+            return Task.FromResult(new VmHarnessGuestCommandResult(
+                0,
+                "{\"planId\":\"11111111-1111-1111-1111-111111111111\",\"isBlocked\":false,\"innerGateEvidence\":{\"planFrozen\":\"True\",\"updateLowRisk\":\"True\",\"updateWindowsRecommended\":\"True\",\"sourceIsWindowsUpdate\":\"True\",\"noRestrictedDeviceCategory\":\"True\"}}",
+                string.Empty,
+                TimeSpan.FromSeconds(1)));
         }
 
         if (command.Contains("tortoise-lab vm install", StringComparison.OrdinalIgnoreCase))
         {
             return Task.FromResult(new VmHarnessGuestCommandResult(
                 0,
-                "{\"planId\":\"11111111-1111-1111-1111-111111111111\",\"classification\":\"Completed\",\"completedSuccessfully\":true,\"summary\":\"install ok\"}",
+                "{\"planId\":\"11111111-1111-1111-1111-111111111111\",\"classification\":\"Completed\",\"completedSuccessfully\":true,\"summary\":\"install ok\",\"innerGateEvidence\":{\"planFrozen\":\"True\",\"updateLowRisk\":\"True\",\"updateWindowsRecommended\":\"True\",\"sourceIsWindowsUpdate\":\"True\",\"packageDownloadedAndVerified\":\"True\",\"preInstallPendingRebootNotPending\":\"True\",\"brokerToctouChecksPassed\":\"True\",\"servicingLockAcquired\":\"True\",\"authoritativeHardwareIdMatch\":\"True\",\"browseOnlyKnownAndFalse\":\"True\",\"noRestrictedDeviceCategory\":\"True\"}}",
                 string.Empty,
                 TimeSpan.FromSeconds(1)));
         }
 
-        if (command.Contains("export-report", StringComparison.OrdinalIgnoreCase)
-            || command.Contains("recover list", StringComparison.OrdinalIgnoreCase)
-            || command.Contains("type ", StringComparison.OrdinalIgnoreCase))
+        if (command.Contains("tortoise-lab vm evidence snapshot", StringComparison.OrdinalIgnoreCase))
         {
-            return Task.FromResult(new VmHarnessGuestCommandResult(0, "{}", string.Empty, TimeSpan.Zero));
+            return Task.FromResult(new VmHarnessGuestCommandResult(
+                0,
+                "{\"recommendationScan\":{\"schemaVersion\":1,\"recommendations\":[]},\"devices\":[],\"plans\":[],\"transactions\":[]}",
+                string.Empty,
+                TimeSpan.Zero));
         }
 
         return Task.FromResult(new VmHarnessGuestCommandResult(0, command, string.Empty, TimeSpan.Zero));
     }
 
     public Task<bool> ProbeReachabilityAsync(
-        string vmName,
+        VmHarnessGuestTarget target,
         TimeSpan timeout,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(true);
