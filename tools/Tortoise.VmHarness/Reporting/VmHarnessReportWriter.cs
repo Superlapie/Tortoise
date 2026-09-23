@@ -58,6 +58,8 @@ public static class VmHarnessReportWriter
         builder.AppendLine($"- Outcome: `{restoreOutcome}`");
         if (restoreResult is not null)
         {
+            builder.AppendLine($"- Hyper-V state running: `{restoreResult.HyperVStateRunning}`");
+            builder.AppendLine($"- Guest reachable: `{restoreResult.GuestReachable}`");
             builder.AppendLine($"- Summary: {restoreResult.Summary}");
             if (!string.IsNullOrWhiteSpace(restoreResult.Error))
             {

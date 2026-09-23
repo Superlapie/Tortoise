@@ -27,7 +27,7 @@ public sealed class HyperVVmHarnessProvider : IVmHarnessProvider
             'ok'
             """;
 
-        _ = await _executor.RunAsync(script, cancellationToken);
+        _ = await _executor.RunAsync(script, cancellationToken: cancellationToken);
     }
 
     public async Task<VmHarnessVmTarget> ResolveVmAsync(string vmName, CancellationToken cancellationToken = default)
@@ -53,7 +53,7 @@ public sealed class HyperVVmHarnessProvider : IVmHarnessProvider
             } | ConvertTo-Json -Compress
             """;
 
-        var record = await _executor.RunJsonAsync<HyperVVmRecord>(script, cancellationToken)
+        var record = await _executor.RunJsonAsync<HyperVVmRecord>(script, cancellationToken: cancellationToken)
             ?? throw new VmHarnessProviderException($"Hyper-V VM '{vmName}' could not be resolved.");
 
         if (!string.Equals(record.Name, vmName, StringComparison.Ordinal))
@@ -69,6 +69,21 @@ public sealed class HyperVVmHarnessProvider : IVmHarnessProvider
             CheckpointOperationsAvailable: true);
     }
 
+    public async Task<VmHarnessVmTarget> VerifyTargetIdentityAsync(
+        VmHarnessVmTarget target,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        var record = await GetVmByIdAsync(target.HyperVVmId, cancellationToken);
+        if (!string.Equals(record.Name, target.Name, StringComparison.Ordinal))
+        {
+            throw new VmHarnessProviderException(
+                $"Hyper-V VM ID '{target.HyperVVmId}' now resolves to '{record.Name}', expected '{target.Name}'.");
+        }
+
+        return target with { State = record.State };
+    }
+
     public async Task<VmHarnessCheckpoint> CreateCheckpointAsync(
         VmHarnessVmTarget target,
         string checkpointName,
@@ -77,17 +92,20 @@ public sealed class HyperVVmHarnessProvider : IVmHarnessProvider
         ArgumentNullException.ThrowIfNull(target);
         ArgumentException.ThrowIfNullOrWhiteSpace(checkpointName);
 
-        var escapedVm = EscapeSingleQuoted(target.Name);
+        target = await VerifyTargetIdentityAsync(target, cancellationToken);
         var escapedCheckpoint = EscapeSingleQuoted(checkpointName);
         var script = $$"""
             $ErrorActionPreference = 'Stop'
             Import-Module Hyper-V -ErrorAction Stop | Out-Null
-            $vm = Get-VM -Name '{{escapedVm}}' -ErrorAction Stop
+            $vm = Get-VM -Id '{{target.HyperVVmId}}' -ErrorAction Stop
+            if ($vm.Name -cne '{{EscapeSingleQuoted(target.Name)}}') {
+              throw 'Hyper-V VM ID/name binding mismatch during checkpoint creation.'
+            }
             if ($vm.State -ne 'Running') {
               Start-VM -VM $vm | Out-Null
             }
             Checkpoint-VM -VM $vm -SnapshotName '{{escapedCheckpoint}}' -ErrorAction Stop | Out-Null
-            $snapshot = Get-VMSnapshot -VMName '{{escapedVm}}' -Name '{{escapedCheckpoint}}' -ErrorAction Stop
+            $snapshot = Get-VMSnapshot -VM $vm -Name '{{escapedCheckpoint}}' -ErrorAction Stop
             [pscustomobject]@{
               Id = $snapshot.Id.Guid.ToString()
               Name = $snapshot.Name
@@ -95,7 +113,7 @@ public sealed class HyperVVmHarnessProvider : IVmHarnessProvider
             } | ConvertTo-Json -Compress
             """;
 
-        var snapshot = await _executor.RunJsonAsync<HyperVSnapshotRecord>(script, cancellationToken)
+        var snapshot = await _executor.RunJsonAsync<HyperVSnapshotRecord>(script, cancellationToken: cancellationToken)
             ?? throw new VmHarnessProviderException(
                 $"Failed to create checkpoint '{checkpointName}' for VM '{target.Name}'.");
 
@@ -115,31 +133,48 @@ public sealed class HyperVVmHarnessProvider : IVmHarnessProvider
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(checkpoint);
 
-        var escapedVm = EscapeSingleQuoted(target.Name);
-        var escapedCheckpoint = EscapeSingleQuoted(checkpoint.Name);
-        var script = $$"""
-            $ErrorActionPreference = 'Stop'
-            Import-Module Hyper-V -ErrorAction Stop | Out-Null
-            Restore-VMSnapshot -VMName '{{escapedVm}}' -Name '{{escapedCheckpoint}}' -Confirm:$false -ErrorAction Stop | Out-Null
-            Start-VM -Name '{{escapedVm}}' -ErrorAction Stop | Out-Null
-            $vm = Get-VM -Name '{{escapedVm}}' -ErrorAction Stop
-            [pscustomobject]@{
-              State = $vm.State.ToString()
-            } | ConvertTo-Json -Compress
-            """;
+        if (!string.Equals(checkpoint.HyperVVmId, target.HyperVVmId, StringComparison.OrdinalIgnoreCase))
+        {
+            return new VmHarnessRestoreResult(
+                false,
+                checkpoint.Name,
+                checkpoint.Id,
+                false,
+                false,
+                "Checkpoint VM ID does not match the bound target VM ID.",
+                "Checkpoint/target VM ID mismatch.");
+        }
 
         try
         {
-            var state = await _executor.RunJsonAsync<HyperVVmRecord>(script, cancellationToken);
-            var reachable = string.Equals(state?.State, "Running", StringComparison.OrdinalIgnoreCase);
+            target = await VerifyTargetIdentityAsync(target, cancellationToken);
+            var escapedCheckpoint = EscapeSingleQuoted(checkpoint.Name);
+            var script = $$"""
+                $ErrorActionPreference = 'Stop'
+                Import-Module Hyper-V -ErrorAction Stop | Out-Null
+                $vm = Get-VM -Id '{{target.HyperVVmId}}' -ErrorAction Stop
+                if ($vm.Name -cne '{{EscapeSingleQuoted(target.Name)}}') {
+                  throw 'Hyper-V VM ID/name binding mismatch during restore.'
+                }
+                Restore-VMSnapshot -VM $vm -Name '{{escapedCheckpoint}}' -Confirm:$false -ErrorAction Stop | Out-Null
+                Start-VM -VM $vm | Out-Null
+                $vm = Get-VM -Id '{{target.HyperVVmId}}' -ErrorAction Stop
+                [pscustomobject]@{
+                  State = $vm.State.ToString()
+                } | ConvertTo-Json -Compress
+                """;
+
+            var state = await _executor.RunJsonAsync<HyperVStateRecord>(script, cancellationToken: cancellationToken);
+            var hyperVRunning = string.Equals(state?.State, "Running", StringComparison.OrdinalIgnoreCase);
             return new VmHarnessRestoreResult(
-                reachable,
+                hyperVRunning,
                 checkpoint.Name,
                 checkpoint.Id,
-                reachable,
-                reachable
-                    ? $"Restored checkpoint '{checkpoint.Name}' and VM is running."
-                    : $"Restored checkpoint '{checkpoint.Name}' but VM state is '{state?.State ?? "unknown"}'.");
+                hyperVRunning,
+                false,
+                hyperVRunning
+                    ? $"Restored checkpoint '{checkpoint.Name}' and Hyper-V reports Running."
+                    : $"Restored checkpoint '{checkpoint.Name}' but Hyper-V state is '{state?.State ?? "unknown"}'.");
         }
         catch (Exception ex)
         {
@@ -148,12 +183,13 @@ public sealed class HyperVVmHarnessProvider : IVmHarnessProvider
                 checkpoint.Name,
                 checkpoint.Id,
                 false,
+                false,
                 "Checkpoint restore failed.",
                 ex.Message);
         }
     }
 
-    public async Task WaitForVmRunningAsync(
+    public async Task<bool> WaitForHyperVRunningAsync(
         VmHarnessVmTarget target,
         TimeSpan timeout,
         CancellationToken cancellationToken = default)
@@ -162,17 +198,33 @@ public sealed class HyperVVmHarnessProvider : IVmHarnessProvider
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var current = await ResolveVmAsync(target.Name, cancellationToken);
+            var current = await VerifyTargetIdentityAsync(target, cancellationToken);
             if (string.Equals(current.State, "Running", StringComparison.OrdinalIgnoreCase))
             {
-                return;
+                return true;
             }
 
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
 
-        throw new VmHarnessProviderException(
-            $"Timed out waiting for VM '{target.Name}' to reach Running state.");
+        return false;
+    }
+
+    private async Task<HyperVVmRecord> GetVmByIdAsync(string vmId, CancellationToken cancellationToken)
+    {
+        var script = $$"""
+            $ErrorActionPreference = 'Stop'
+            Import-Module Hyper-V -ErrorAction Stop | Out-Null
+            $vm = Get-VM -Id '{{vmId}}' -ErrorAction Stop
+            [pscustomobject]@{
+              Id = $vm.Id.Guid.ToString()
+              Name = $vm.Name
+              State = $vm.State.ToString()
+            } | ConvertTo-Json -Compress
+            """;
+
+        return await _executor.RunJsonAsync<HyperVVmRecord>(script, cancellationToken: cancellationToken)
+            ?? throw new VmHarnessProviderException($"Hyper-V VM ID '{vmId}' could not be resolved.");
     }
 
     private static string EscapeSingleQuoted(string value) =>

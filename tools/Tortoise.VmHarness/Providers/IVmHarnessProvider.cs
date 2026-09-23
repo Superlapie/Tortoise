@@ -22,6 +22,10 @@ public interface IVmHarnessProvider
 
     Task<VmHarnessVmTarget> ResolveVmAsync(string vmName, CancellationToken cancellationToken = default);
 
+    Task<VmHarnessVmTarget> VerifyTargetIdentityAsync(
+        VmHarnessVmTarget target,
+        CancellationToken cancellationToken = default);
+
     Task<VmHarnessCheckpoint> CreateCheckpointAsync(
         VmHarnessVmTarget target,
         string checkpointName,
@@ -32,7 +36,7 @@ public interface IVmHarnessProvider
         VmHarnessCheckpoint checkpoint,
         CancellationToken cancellationToken = default);
 
-    Task WaitForVmRunningAsync(
+    Task<bool> WaitForHyperVRunningAsync(
         VmHarnessVmTarget target,
         TimeSpan timeout,
         CancellationToken cancellationToken = default);

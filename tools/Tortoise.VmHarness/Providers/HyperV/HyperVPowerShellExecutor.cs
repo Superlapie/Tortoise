@@ -11,7 +11,10 @@ internal sealed class HyperVPowerShellExecutor
         PropertyNameCaseInsensitive = true,
     };
 
-    public async Task<string> RunAsync(string script, CancellationToken cancellationToken)
+    public async Task<string> RunAsync(
+        string script,
+        IReadOnlyDictionary<string, string>? environmentVariables = null,
+        CancellationToken cancellationToken = default)
     {
         var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
         var psi = new ProcessStartInfo
@@ -23,6 +26,14 @@ internal sealed class HyperVPowerShellExecutor
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+
+        if (environmentVariables is not null)
+        {
+            foreach (var pair in environmentVariables)
+            {
+                psi.Environment[pair.Key] = pair.Value;
+            }
+        }
 
         using var process = Process.Start(psi)
             ?? throw new VmHarnessProviderException("Failed to start powershell.exe.");
@@ -42,9 +53,12 @@ internal sealed class HyperVPowerShellExecutor
         return stdout.Trim();
     }
 
-    public async Task<T?> RunJsonAsync<T>(string script, CancellationToken cancellationToken)
+    public async Task<T?> RunJsonAsync<T>(
+        string script,
+        IReadOnlyDictionary<string, string>? environmentVariables = null,
+        CancellationToken cancellationToken = default)
     {
-        var output = await RunAsync(script, cancellationToken);
+        var output = await RunAsync(script, environmentVariables, cancellationToken);
         if (string.IsNullOrWhiteSpace(output))
         {
             return default;
@@ -63,3 +77,5 @@ internal sealed record HyperVSnapshotRecord(
     string Id,
     string Name,
     string CreationTime);
+
+internal sealed record HyperVStateRecord(string State);

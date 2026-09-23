@@ -11,6 +11,8 @@ namespace Tortoise.VmHarness.Orchestration;
 
 public sealed class VmHarnessOrchestrator
 {
+    private static readonly TimeSpan RestoreCleanupTimeout = TimeSpan.FromMinutes(10);
+
     private readonly IVmHarnessProvider _provider;
     private readonly IVmHarnessRunStore _runStore;
     private readonly IVmHarnessGuestTransport _guestTransport;
@@ -44,8 +46,8 @@ public sealed class VmHarnessOrchestrator
         var run = await _runStore.CreateRunAsync(options, cancellationToken);
         run = run with { HyperVVmId = target.HyperVVmId };
         await _runStore.WriteJsonArtifactAsync(run, "run.json", run, cancellationToken);
-
         await _runStore.WriteJsonArtifactAsync(run, "preflight.json", target, cancellationToken);
+
         var reportPath = Path.Combine(_runStore.GetRunDirectory(run), "REPORT.md");
         await _runStore.WriteTextArtifactAsync(
             run,
@@ -81,9 +83,10 @@ public sealed class VmHarnessOrchestrator
         await _provider.EnsureHostRequirementsAsync(cancellationToken);
         var target = await _provider.ResolveVmAsync(options.VmName, cancellationToken);
         var run = await _runStore.CreateRunAsync(options, cancellationToken);
+        var labDatabasePath = VmHarnessLabDatabaseResolver.ResolveForRun(run.RunId);
         run = run with { HyperVVmId = target.HyperVVmId };
-        await _runStore.WriteJsonArtifactAsync(run, "run.json", run, cancellationToken);
 
+        await _runStore.WriteJsonArtifactAsync(run, "run.json", run, cancellationToken);
         await _runStore.WriteJsonArtifactAsync(run, "preflight.json", target, cancellationToken);
         await _runStore.WriteJsonArtifactAsync(
             run,
@@ -92,9 +95,11 @@ public sealed class VmHarnessOrchestrator
             cancellationToken);
 
         VmHarnessCheckpoint? checkpoint = null;
+        var checkpointCreated = false;
         VmHarnessRestoreResult? restoreResult = null;
         VmHarnessDualVmProofResult? dualProof = null;
-        VmHarnessSafetyGateResult? safetyGate = null;
+        VmHarnessSafetyGateResult? hostPreGate = null;
+        VmHarnessSafetyGateResult? innerLabGate = null;
         VmHarnessScenarioResult? scenarioResult = null;
         var mutationOutcome = VmHarnessMutationOutcome.NotAttempted;
         var restoreOutcome = VmHarnessRestoreOutcome.Skipped;
@@ -103,8 +108,10 @@ public sealed class VmHarnessOrchestrator
         {
             if (proveCheckpoint)
             {
+                target = await _provider.VerifyTargetIdentityAsync(target, cancellationToken);
                 var checkpointName = VmHarnessCheckpointNaming.CreateCheckpointName(run.RunId, DateTimeOffset.UtcNow);
                 checkpoint = await _provider.CreateCheckpointAsync(target, checkpointName, cancellationToken);
+                checkpointCreated = true;
                 run = run with
                 {
                     CheckpointName = checkpoint.Name,
@@ -128,7 +135,21 @@ public sealed class VmHarnessOrchestrator
                 dualProof = VmHarnessDualVmProof.Evaluate(hostProof, guestProof);
                 await _runStore.WriteJsonArtifactAsync(run, "verification.json", dualProof, cancellationToken);
 
-                if (executeMutation && (dualProof.GuestProof is null || !dualProof.ProofsAgree))
+                hostPreGate = VmHarnessHostPreGate.Evaluate(
+                    new VmHarnessHostPreGateContext(
+                        TargetIsHyperVGuest: TriState.True,
+                        HostHyperVProofValid: TriState.True,
+                        CheckpointRecorded: TriState.True,
+                        GuestIsDisposableVm: guestProof is null
+                            ? TriState.Unknown
+                            : guestProof.IsDisposableVm ? TriState.True : TriState.False,
+                        LabMutationCapabilityEnabled: guestProof?.MutationCapabilityEnabled == true
+                            ? TriState.True
+                            : guestProof is null ? TriState.Unknown : TriState.False));
+
+                await _runStore.WriteJsonArtifactAsync(run, "preflight.json", hostPreGate, cancellationToken);
+
+                if (executeMutation && !dualProof.ProofsAgree)
                 {
                     mutationOutcome = VmHarnessMutationOutcome.Blocked;
                     scenarioResult = new VmHarnessScenarioResult(
@@ -138,69 +159,48 @@ public sealed class VmHarnessOrchestrator
                         VmHarnessRestoreOutcome.NotAttempted,
                         dualProof.BlockReason ?? "Host/guest VM proof failed.");
                 }
-                else
+                else if (executeMutation && !hostPreGate.Allowed)
                 {
-                    safetyGate = VmHarnessSafetyGate.EvaluateForMutation(
-                        new VmHarnessSafetyEvaluationContext(
-                            TargetIsHyperVGuest: TriState.True,
-                            HostHyperVProofValid: TriState.True,
-                            CheckpointRecorded: TriState.True,
-                            GuestIsDisposableVm: guestProof is null
-                                ? TriState.Unknown
-                                : guestProof.IsDisposableVm ? TriState.True : TriState.False,
-                            LabMutationGatesSatisfied: guestProof?.MutationCapabilityEnabled == true
-                                ? TriState.True
-                                : guestProof is null ? TriState.Unknown : TriState.False));
+                    mutationOutcome = VmHarnessMutationOutcome.Blocked;
+                    scenarioResult = new VmHarnessScenarioResult(
+                        options.ScenarioId,
+                        VmHarnessVerdict.FailClosed,
+                        mutationOutcome,
+                        VmHarnessRestoreOutcome.NotAttempted,
+                        "Host pre-gate blocked mutation.");
+                }
+                else if (executeMutation)
+                {
+                    var context = new VmHarnessScenarioContext
+                    {
+                        Run = run,
+                        Options = options with { LabDatabasePath = labDatabasePath },
+                        Target = target,
+                        Checkpoint = checkpoint,
+                        GuestProof = guestProof,
+                        LabDatabasePath = labDatabasePath,
+                        GuestTransport = _guestTransport,
+                        RunStore = _runStore,
+                        ExecuteMutation = true,
+                        CancellationToken = cancellationToken,
+                    };
+                    scenarioResult = await scenario.ExecuteAsync(context, cancellationToken);
+                    mutationOutcome = scenarioResult.MutationOutcome;
 
-                    await _runStore.WriteJsonArtifactAsync(run, "broker-result.json", safetyGate, cancellationToken);
-
-                    if (executeMutation && !safetyGate.Allowed)
+                    if (scenarioResult.AdditionalEvidence?.TryGetValue("innerLabGate", out var innerJson) == true
+                        && !string.IsNullOrWhiteSpace(innerJson))
                     {
-                        mutationOutcome = VmHarnessMutationOutcome.Blocked;
-                        scenarioResult = new VmHarnessScenarioResult(
-                            options.ScenarioId,
-                            VmHarnessVerdict.FailClosed,
-                            mutationOutcome,
-                            VmHarnessRestoreOutcome.NotAttempted,
-                            "Safety gate blocked mutation.");
-                    }
-                    else if (executeMutation)
-                    {
-                        var context = new VmHarnessScenarioContext
-                        {
-                            Run = run,
-                            Options = options,
-                            Target = target,
-                            Checkpoint = checkpoint,
-                            GuestProof = guestProof,
-                            GuestTransport = _guestTransport,
-                            RunStore = _runStore,
-                            ExecuteMutation = true,
-                            CancellationToken = cancellationToken,
-                        };
-                        scenarioResult = await scenario.ExecuteAsync(context, cancellationToken);
-                        mutationOutcome = scenarioResult.MutationOutcome;
-                    }
-                    else
-                    {
-                        scenarioResult = new VmHarnessScenarioResult(
-                            options.ScenarioId,
-                            VmHarnessVerdict.CheckpointRestoreProved,
-                            VmHarnessMutationOutcome.NotAttempted,
-                            VmHarnessRestoreOutcome.NotAttempted,
-                            "Checkpoint created; mutation not requested.");
+                        innerLabGate = System.Text.Json.JsonSerializer.Deserialize<VmHarnessSafetyGateResult>(innerJson);
                     }
                 }
-
-                restoreResult = await _provider.RestoreCheckpointAsync(target, checkpoint, cancellationToken);
-                restoreOutcome = restoreResult.Succeeded
-                    ? VmHarnessRestoreOutcome.Succeeded
-                    : VmHarnessRestoreOutcome.Failed;
-                await _runStore.WriteJsonArtifactAsync(run, "restore-result.json", restoreResult, cancellationToken);
-
-                if (restoreResult.Succeeded)
+                else
                 {
-                    await _provider.WaitForVmRunningAsync(target, options.CommandTimeout, cancellationToken);
+                    scenarioResult = new VmHarnessScenarioResult(
+                        options.ScenarioId,
+                        VmHarnessVerdict.CheckpointRestoreProved,
+                        VmHarnessMutationOutcome.NotAttempted,
+                        VmHarnessRestoreOutcome.NotAttempted,
+                        "Checkpoint created; mutation not requested.");
                 }
             }
             else
@@ -208,8 +208,9 @@ public sealed class VmHarnessOrchestrator
                 var context = new VmHarnessScenarioContext
                 {
                     Run = run,
-                    Options = options,
+                    Options = options with { LabDatabasePath = labDatabasePath },
                     Target = target,
+                    LabDatabasePath = labDatabasePath,
                     GuestTransport = _guestTransport,
                     RunStore = _runStore,
                     ExecuteMutation = false,
@@ -227,6 +228,66 @@ public sealed class VmHarnessOrchestrator
                 VmHarnessMutationOutcome.NotAttempted,
                 restoreOutcome,
                 ex.Message);
+        }
+        finally
+        {
+            if (checkpointCreated && checkpoint is not null)
+            {
+                using var cleanupCts = new CancellationTokenSource(RestoreCleanupTimeout);
+                try
+                {
+                    target = await _provider.VerifyTargetIdentityAsync(target, cleanupCts.Token);
+                    restoreResult = await _provider.RestoreCheckpointAsync(target, checkpoint, cleanupCts.Token);
+                    restoreOutcome = restoreResult.Succeeded
+                        ? VmHarnessRestoreOutcome.Succeeded
+                        : VmHarnessRestoreOutcome.Failed;
+
+                    if (restoreResult.HyperVStateRunning)
+                    {
+                        _ = await _provider.WaitForHyperVRunningAsync(target, options.CommandTimeout, cleanupCts.Token);
+                    }
+
+                    if (_guestTransport.IsConfigured)
+                    {
+                        var guestReachable = await _guestTransport.ProbeReachabilityAsync(
+                            target.Name,
+                            options.CommandTimeout,
+                            cleanupCts.Token);
+                        restoreResult = restoreResult with { GuestReachable = guestReachable };
+                    }
+
+                    await _runStore.WriteJsonArtifactAsync(run, "restore-result.json", restoreResult, cleanupCts.Token);
+                }
+                catch (Exception restoreEx)
+                {
+                    restoreOutcome = VmHarnessRestoreOutcome.Failed;
+                    restoreResult = new VmHarnessRestoreResult(
+                        false,
+                        checkpoint.Name,
+                        checkpoint.Id,
+                        false,
+                        false,
+                        "Checkpoint restore failed during cleanup.",
+                        restoreEx.Message);
+                    try
+                    {
+                        await _runStore.WriteJsonArtifactAsync(run, "restore-result.json", restoreResult, CancellationToken.None);
+                    }
+                    catch
+                    {
+                        // Best effort only during cleanup failure.
+                    }
+                }
+            }
+        }
+
+        if (innerLabGate is not null)
+        {
+            await _runStore.WriteJsonArtifactAsync(run, "broker-result.json", innerLabGate, cancellationToken);
+        }
+        else if (hostPreGate is not null)
+        {
+            await _runStore.WriteJsonArtifactAsync(run, "broker-result.json", hostPreGate, cancellationToken);
         }
 
         var verdict = VmHarnessVerdictClassifier.ClassifyFinal(
@@ -248,7 +309,7 @@ public sealed class VmHarnessOrchestrator
             scenarioResult,
             restoreResult,
             dualProof,
-            safetyGate);
+            hostPreGate);
         await _runStore.WriteTextArtifactAsync(run, "REPORT.md", report, cancellationToken);
 
         var manifest = new VmHarnessEvidenceManifest(

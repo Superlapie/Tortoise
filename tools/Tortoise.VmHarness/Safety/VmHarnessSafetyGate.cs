@@ -193,8 +193,14 @@ public static class VmHarnessVerdictClassifier
             return VmHarnessVerdict.Pass;
         }
 
+        if (scenarioResult?.Verdict == VmHarnessVerdict.HarnessError && mutationAttempted)
+        {
+            return VmHarnessVerdict.HarnessError;
+        }
+
         if (mutationOutcome == VmHarnessMutationOutcome.NotAttempted
-            && restoreOutcome == VmHarnessRestoreOutcome.Succeeded)
+            && restoreOutcome == VmHarnessRestoreOutcome.Succeeded
+            && !mutationAttempted)
         {
             return VmHarnessVerdict.CheckpointRestoreProved;
         }

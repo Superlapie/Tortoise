@@ -133,7 +133,8 @@ public sealed record VmHarnessRunOptions(
     VmHarnessRunMode Mode,
     string ArtifactsRoot,
     string? TortoiseCommitSha,
-    TimeSpan CommandTimeout);
+    TimeSpan CommandTimeout,
+    string? LabDatabasePath = null);
 
 public sealed record VmHarnessSafetyGateResult(
     bool Allowed,
@@ -145,7 +146,8 @@ public sealed record VmHarnessRestoreResult(
     bool Succeeded,
     string CheckpointName,
     string? CheckpointId,
-    bool VmReachableAfterRestore,
+    bool HyperVStateRunning,
+    bool GuestReachable,
     string Summary,
     string? Error = null);
 
