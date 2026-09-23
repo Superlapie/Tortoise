@@ -2,6 +2,13 @@ using System.Xml.Linq;
 
 namespace Tortoise.VerificationSummary;
 
+internal sealed record TrxFileSummary(
+    string Path,
+    int Total,
+    int Passed,
+    int Failed,
+    int Skipped);
+
 internal sealed record VerificationSummaryPayload(
     string Sha,
     string Os,
@@ -14,7 +21,9 @@ internal sealed record VerificationSummaryPayload(
     int TestProjectCount,
     int? IntegrationTestCount,
     DateTimeOffset Timestamp,
-    IReadOnlyList<string> TrxFiles);
+    IReadOnlyList<string> TrxFiles,
+    IReadOnlyList<TrxFileSummary> TrxFileSummaries,
+    IReadOnlyList<string> ValidationErrors);
 
 internal static class Program
 {
@@ -34,6 +43,7 @@ internal static class Program
         var os = GetOption(args, "--os")
             ?? Environment.GetEnvironmentVariable("RUNNER_OS")
             ?? Environment.OSVersion.Platform.ToString();
+        var minTrxFiles = ParseInt(GetOption(args, "--min-trx-files")) ?? 2;
 
         if (!Directory.Exists(trxRoot))
         {
@@ -41,12 +51,27 @@ internal static class Program
             return 1;
         }
 
-        var trxFiles = Directory.GetFiles(trxRoot, "*.trx", SearchOption.AllDirectories);
+        var trxFiles = Directory.GetFiles(trxRoot, "*.trx", SearchOption.AllDirectories)
+            .Select(Path.GetFullPath)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         var counters = new TestCounters();
+        var trxSummaries = new List<TrxFileSummary>();
         foreach (var trxFile in trxFiles)
         {
-            MergeTrx(trxFile, counters);
+            var fileCounters = new TestCounters();
+            MergeTrx(trxFile, fileCounters);
+            MergeCounters(fileCounters, counters);
+            trxSummaries.Add(new TrxFileSummary(
+                trxFile,
+                fileCounters.Total,
+                fileCounters.Passed,
+                fileCounters.Failed,
+                fileCounters.Skipped));
         }
+
+        var validationErrors = ValidateAggregation(trxFiles, counters, minTrxFiles);
 
         Directory.CreateDirectory(outputRoot);
         var payload = new VerificationSummaryPayload(
@@ -58,10 +83,12 @@ internal static class Program
             counters.Skipped,
             ParseInt(GetOption(args, "--build-warnings")),
             ParseInt(GetOption(args, "--build-errors")),
-            trxFiles.Length,
+            trxFiles.Count,
             counters.IntegrationTests,
             DateTimeOffset.UtcNow,
-            trxFiles.Select(Path.GetFullPath).OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList());
+            trxFiles,
+            trxSummaries,
+            validationErrors);
 
         var jsonPath = Path.Combine(outputRoot, "summary.json");
         File.WriteAllText(jsonPath, System.Text.Json.JsonSerializer.Serialize(payload, JsonOptions));
@@ -72,7 +99,69 @@ internal static class Program
 
         Console.WriteLine($"Wrote {jsonPath}");
         Console.WriteLine($"Wrote {mdPath}");
+
+        if (validationErrors.Count > 0)
+        {
+            foreach (var error in validationErrors)
+            {
+                Console.Error.WriteLine($"VALIDATION ERROR: {error}");
+            }
+
+            return 3;
+        }
+
         return counters.Failed > 0 ? 2 : 0;
+    }
+
+    private static IReadOnlyList<string> ValidateAggregation(
+        IReadOnlyList<string> trxFiles,
+        TestCounters counters,
+        int minTrxFiles)
+    {
+        var errors = new List<string>();
+
+        if (trxFiles.Count < minTrxFiles)
+        {
+            errors.Add($"Expected at least {minTrxFiles} TRX files, found {trxFiles.Count}.");
+        }
+
+        if (trxFiles.Count == 0)
+        {
+            errors.Add("No TRX files were found; verification summary cannot represent the test suite.");
+            return errors;
+        }
+
+        if (counters.Total <= 0)
+        {
+            errors.Add("Aggregated TRX total is zero; no tests were recorded.");
+        }
+
+        if (counters.Failed > 0)
+        {
+            errors.Add($"Aggregated TRX reports {counters.Failed} failed test(s).");
+        }
+
+        var duplicatePaths = trxFiles
+            .GroupBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToList();
+
+        if (duplicatePaths.Count > 0)
+        {
+            errors.Add($"Duplicate TRX paths detected: {string.Join(", ", duplicatePaths)}");
+        }
+
+        return errors;
+    }
+
+    private static void MergeCounters(TestCounters source, TestCounters destination)
+    {
+        destination.Total += source.Total;
+        destination.Passed += source.Passed;
+        destination.Failed += source.Failed;
+        destination.Skipped += source.Skipped;
+        destination.IntegrationTests += source.IntegrationTests;
     }
 
     private static void MergeTrx(string trxFile, TestCounters counters)
@@ -145,9 +234,23 @@ internal static class Program
         }
 
         builder.AppendLine($"- TRX files: {payload.TrxFiles.Count}");
+        foreach (var summary in payload.TrxFileSummaries)
+        {
+            builder.AppendLine($"  - `{Path.GetFileName(summary.Path)}`: total={summary.Total}, passed={summary.Passed}, failed={summary.Failed}, skipped={summary.Skipped}");
+        }
+
         if (payload.IntegrationTestCount is not null)
         {
             builder.AppendLine($"- Integration tests (TRX Category trait): {payload.IntegrationTestCount}");
+        }
+
+        if (payload.ValidationErrors.Count > 0)
+        {
+            builder.AppendLine("- Validation errors:");
+            foreach (var error in payload.ValidationErrors)
+            {
+                builder.AppendLine($"  - {error}");
+            }
         }
 
         return builder.ToString();

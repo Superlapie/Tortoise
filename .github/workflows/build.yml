@@ -19,10 +19,18 @@ jobs:
       - name: Build libraries
         run: dotnet build Tortoise.slnx -c Release --no-restore /p:BuildProjectReferences=true
       - name: Test
-        run: dotnet test Tortoise.slnx -c Release --no-build --filter "Category!=Integration&Category!=HyperVIntegration" --logger "trx;LogFileName=linux-results.trx" --results-directory artifacts/test-results
+        run: |
+          mkdir -p artifacts/test-results
+          for proj in tests/*/*.csproj; do
+            case "$(basename "$proj")" in
+              *Probe*|*Integration*) continue ;;
+            esac
+            name=$(basename "$proj" .csproj)
+            dotnet test "$proj" -c Release --no-build --filter "Category!=Integration&Category!=HyperVIntegration" --logger "trx;LogFileName=${name}.trx" --results-directory artifacts/test-results
+          done
       - name: Verification summary
         if: always()
-        run: dotnet run --project tools/Tortoise.VerificationSummary -- --trx-root=artifacts/test-results --output-root=artifacts/verification --sha=${{ github.sha }} --os=Linux
+        run: dotnet run --project tools/Tortoise.VerificationSummary -- --trx-root=artifacts/test-results --output-root=artifacts/verification --sha=${{ github.sha }} --os=Linux --min-trx-files=8
       - name: Upload verification artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -43,11 +51,21 @@ jobs:
       - name: Build
         run: dotnet build Tortoise.slnx -c Release --no-restore
       - name: Test
-        run: dotnet test Tortoise.slnx -c Release --no-build --filter "Category!=Integration&Category!=HyperVIntegration" --logger "trx;LogFileName=windows-results.trx" --results-directory artifacts/test-results
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/test-results | Out-Null
+          Get-ChildItem tests -Directory | ForEach-Object {
+            $proj = Get-ChildItem $_.FullName -Filter *.csproj | Select-Object -First 1
+            if ($null -eq $proj) { return }
+            if ($proj.Name -match 'Probe|Integration') { return }
+            $name = [System.IO.Path]::GetFileNameWithoutExtension($proj.Name)
+            dotnet test $proj.FullName -c Release --no-build --filter "Category!=Integration&Category!=HyperVIntegration" --logger "trx;LogFileName=$name.trx" --results-directory artifacts/test-results
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
       - name: Verification summary
         if: always()
         shell: pwsh
-        run: dotnet run --project tools/Tortoise.VerificationSummary -- --trx-root=artifacts/test-results --output-root=artifacts/verification --sha=$env:GITHUB_SHA --os=Windows
+        run: dotnet run --project tools/Tortoise.VerificationSummary -- --trx-root=artifacts/test-results --output-root=artifacts/verification --sha=$env:GITHUB_SHA --os=Windows --min-trx-files=8
       - name: Upload verification artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Tortoise.ReleaseValidation</RootNamespace>
+    <AssemblyName>tortoise-release-validation</AssemblyName>
+    <Description>Validate staged Tortoise release archives for forbidden developer binaries</Description>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

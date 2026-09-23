@@ -18,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Tortoise.Contracts\Tortoise.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Tortoise.Core\Tortoise.Core.csproj" />
+    <ProjectReference Include="..\..\tools\Tortoise.ReleaseValidation\Tortoise.ReleaseValidation.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,3 +1,6 @@
+using System.Xml.Linq;
+using Tortoise.ReleaseValidation;
+
 namespace Tortoise.ArchitectureTests;
 
 public sealed class ReleaseArchiveContentTests
@@ -19,18 +22,13 @@ public sealed class ReleaseArchiveContentTests
         Assert.DoesNotContain("Tortoise.VerificationSummary", releaseWorkflow, StringComparison.Ordinal);
         Assert.Contains("artifacts/portable/app", releaseWorkflow, StringComparison.Ordinal);
         Assert.Contains("artifacts/portable/cli", releaseWorkflow, StringComparison.Ordinal);
+        Assert.Contains("tools/Tortoise.ReleaseValidation", releaseWorkflow, StringComparison.Ordinal);
     }
 
     [Fact]
     public void ReleaseArchive_must_not_include_developer_only_binaries()
     {
-        var forbidden = new[]
-        {
-            "tortoise-vm-harness",
-            "tortoise-lab",
-            "tortoise-lab-broker",
-            "tortoise-verification-summary",
-        };
+        var forbidden = ReleaseArchiveValidator.ForbiddenEntryNames;
 
         foreach (var name in forbidden)
         {
@@ -40,6 +38,14 @@ public sealed class ReleaseArchiveContentTests
                 "workflows",
                 "release.yml")), StringComparison.OrdinalIgnoreCase);
         }
+    }
+
+    [Fact]
+    public void ReleaseArchiveValidator_rejects_forbidden_entry_names()
+    {
+        Assert.True(ReleaseArchiveValidator.IsForbiddenEntry("portable/cli/tortoise-lab.dll"));
+        Assert.True(ReleaseArchiveValidator.IsForbiddenEntry("portable/app/Tortoise.Core.Tests.dll"));
+        Assert.False(ReleaseArchiveValidator.IsForbiddenEntry("portable/cli/tortoise.exe"));
     }
 
     private static string FindRepositoryRoot()

@@ -13,6 +13,7 @@
     <Project Path="src/Tortoise.WindowsUpdate/Tortoise.WindowsUpdate.csproj" />
   </Folder>
   <Folder Name="/tools/">
+    <Project Path="tools/Tortoise.ReleaseValidation/Tortoise.ReleaseValidation.csproj" />
     <Project Path="tools/Tortoise.VmHarness/Tortoise.VmHarness.csproj" />
     <Project Path="tools/Tortoise.VerificationSummary/Tortoise.VerificationSummary.csproj" />
   </Folder>
