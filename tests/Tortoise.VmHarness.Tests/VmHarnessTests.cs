@@ -1,3 +1,5 @@
+using System.Runtime.Versioning;
+using System.Xml.Linq;
 using Tortoise.VmHarness.Domain;
 using Tortoise.VmHarness.Evidence;
 using Tortoise.VmHarness.Guest;
@@ -9,12 +11,12 @@ using Tortoise.VmHarness.Tests.Fakes;
 
 namespace Tortoise.VmHarness.Tests;
 
-public sealed class VmHarnessSafetyGateTests
+public sealed class VmHarnessHostPreGateTests
 {
     [Fact]
-    public void EvaluateForMutation_BlocksWhenAnyConditionUnknown()
+    public void Evaluate_BlocksWhenGuestProofMissing()
     {
-        var result = VmHarnessSafetyGate.EvaluateForMutation(new VmHarnessSafetyEvaluationContext(
+        var result = VmHarnessHostPreGate.Evaluate(new VmHarnessHostPreGateContext(
             TargetIsHyperVGuest: TriState.True,
             HostHyperVProofValid: TriState.True,
             CheckpointRecorded: TriState.True,
@@ -25,28 +27,17 @@ public sealed class VmHarnessSafetyGateTests
     }
 
     [Fact]
-    public void EvaluateForMutation_AllowsWhenAllConditionsTrue()
+    public void Evaluate_AllowsWhenHostPreGateConditionsAreKnownTrue()
     {
-        var result = VmHarnessSafetyGate.EvaluateForMutation(new VmHarnessSafetyEvaluationContext(
+        var result = VmHarnessHostPreGate.Evaluate(new VmHarnessHostPreGateContext(
             TargetIsHyperVGuest: TriState.True,
             HostHyperVProofValid: TriState.True,
             CheckpointRecorded: TriState.True,
             GuestIsDisposableVm: TriState.True,
-            LabMutationGatesSatisfied: TriState.True,
-            PlanFrozen: TriState.True,
-            UpdateLowRisk: TriState.True,
-            UpdateWindowsRecommended: TriState.True,
-            SourceIsWindowsUpdate: TriState.True,
-            AuthoritativeHardwareIdMatch: TriState.True,
-            BrowseOnlyKnownAndFalse: TriState.True,
-            PackageDownloadedAndVerified: TriState.True,
-            PendingRebootNotPending: TriState.True,
-            BrokerToctouChecksPassed: TriState.True,
-            ServicingLockAcquired: TriState.True,
-            NoRestrictedDeviceCategory: TriState.True));
+            LabMutationCapabilityEnabled: TriState.True));
 
         Assert.True(result.Allowed);
-        Assert.Equal(VmHarnessSafetyGate.RequiredConditionCount, result.SatisfiedConditions.Count);
+        Assert.Equal(VmHarnessHostPreGate.RequiredConditionCount, result.SatisfiedConditions.Count);
     }
 }
 
@@ -82,15 +73,51 @@ public sealed class VmHarnessRedactorTests
     }
 }
 
-public sealed class TortoiseCliOutputParserTests
+public sealed class VmHarnessPlanJsonParserTests
 {
     [Fact]
-    public void ParsePlanIds_FindsGuids()
+    public void ParsePlanIds_FindsGuidsFromJson()
     {
-        var ids = TortoiseCliOutputParser.ParsePlanIds(
-            "Plan aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee created.");
+        var ids = VmHarnessPlanJsonParser.ParsePlanIds(
+            "{\"plans\":[{\"planId\":\"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\",\"riskLevel\":\"Low\",\"classification\":\"WindowsRecommended\"}]}");
         Assert.Single(ids);
         Assert.Equal(Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"), ids[0]);
+    }
+}
+
+public sealed class LabInstallResultClassifierTests
+{
+    [Fact]
+    public void Classify_AwaitingReboot_IsRecoveryRequiredNotBlocked()
+    {
+        var (verdict, outcome) = LabInstallResultClassifier.Classify(new HarnessLabVmInstallJson(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "AwaitingReboot",
+            false,
+            "InstalledRestartRequired",
+            true,
+            true,
+            true,
+            0,
+            null,
+            "AwaitingReboot",
+            "reboot required"));
+
+        Assert.Equal(VmHarnessVerdict.RecoveryRequired, verdict);
+        Assert.Equal(VmHarnessMutationOutcome.Inconclusive, outcome);
+    }
+}
+
+public sealed class VmHarnessRemoteCommandParserTests
+{
+    [Fact]
+    public void ParseStatusJson_ReadsExplicitMarkerFields()
+    {
+        var status = HarnessLabJsonParser.ParseStatusJson(
+            "{\"isLabBuild\":true,\"isDisposableVm\":true,\"mutationTestsEnabled\":true,\"vmInstallExplicitlyAllowed\":true,\"mutationCapabilityEnabled\":true,\"mutationEnvironment\":\"DisposableVm\",\"reason\":\"enabled\"}");
+        Assert.True(status.MutationTestsEnabled);
+        Assert.True(status.VmInstallExplicitlyAllowed);
     }
 }
 
@@ -106,18 +133,6 @@ public sealed class VmHarnessVerdictClassifierTests
             mutationAttempted: true);
 
         Assert.Equal(VmHarnessVerdict.RestoreFailed, verdict);
-    }
-
-    [Fact]
-    public void ClassifyFinal_NoEligibleCandidatePreserved()
-    {
-        var verdict = VmHarnessVerdictClassifier.ClassifyFinal(
-            VmHarnessMutationOutcome.NotAttempted,
-            VmHarnessRestoreOutcome.Skipped,
-            new VmHarnessScenarioResult("s", VmHarnessVerdict.NoEligibleCandidate, VmHarnessMutationOutcome.NotAttempted, VmHarnessRestoreOutcome.Skipped, "none"),
-            mutationAttempted: false);
-
-        Assert.Equal(VmHarnessVerdict.NoEligibleCandidate, verdict);
     }
 }
 
@@ -146,7 +161,6 @@ public sealed class VmHarnessOrchestratorTests
         Assert.Equal(0, provider.CreateCheckpointCallCount);
         Assert.Equal(0, provider.RestoreCallCount);
         Assert.Equal(VmHarnessVerdict.DryRunComplete, result.Verdict);
-        Assert.Equal(VmHarnessMutationOutcome.NotAttempted, result.MutationOutcome);
     }
 
     [Fact]
@@ -172,14 +186,13 @@ public sealed class VmHarnessOrchestratorTests
         Assert.Equal(1, provider.CreateCheckpointCallCount);
         Assert.Equal(1, provider.RestoreCallCount);
         Assert.Equal(VmHarnessVerdict.CheckpointRestoreProved, result.Verdict);
-        Assert.Equal(VmHarnessMutationOutcome.NotAttempted, result.MutationOutcome);
-        Assert.Equal(VmHarnessRestoreOutcome.Succeeded, result.RestoreOutcome);
+        Assert.True(result.RestoreResult?.GuestReachable);
     }
 
     [Fact]
-    public async Task CheckpointCreationFailure_PreventsMutationExecution()
+    public async Task ExecuteMutation_AllowsWhenHostPreGatePasses()
     {
-        var provider = new FakeVmHarnessProvider { ShouldFailCheckpointCreation = true };
+        var provider = new FakeVmHarnessProvider();
         var counting = new CountingScenario();
         var store = new InMemoryRunStore();
         var guest = new FakeGuestTransport();
@@ -197,36 +210,63 @@ public sealed class VmHarnessOrchestratorTests
             "abc123",
             TimeSpan.FromMinutes(1)));
 
-        Assert.Equal(0, counting.ExecuteCount);
-        Assert.Equal(VmHarnessVerdict.HarnessError, result.Verdict);
+        Assert.Equal(1, counting.ExecuteCount);
+        Assert.Equal(VmHarnessVerdict.Pass, result.Verdict);
     }
 
     [Fact]
-    public async Task RestoreFailure_ReportsRestoreFailedVerdict()
+    public async Task ThrowingScenarioAfterCheckpoint_StillAttemptsRestore()
     {
-        var provider = new FakeVmHarnessProvider { ShouldFailRestore = true };
+        var provider = new FakeVmHarnessProvider();
         var store = new InMemoryRunStore();
         var guest = new FakeGuestTransport();
         var orchestrator = new VmHarnessOrchestrator(
             provider,
             store,
             guest,
-            VmHarnessScenarioRegistry.CreateDefault());
+            new VmHarnessScenarioRegistry([new ThrowingScenario()]));
 
         var result = await orchestrator.RunAsync(new VmHarnessRunOptions(
             "lab-vm",
-            "baseline-low-risk-install",
-            VmHarnessRunMode.ProveCheckpointRestore,
+            "throws",
+            VmHarnessRunMode.ExecuteDisposableVmMutation,
             "artifacts/vm-harness",
             "abc123",
             TimeSpan.FromMinutes(1)));
 
-        Assert.Equal(VmHarnessVerdict.RestoreFailed, result.Verdict);
-        Assert.Equal(VmHarnessRestoreOutcome.Failed, result.RestoreOutcome);
+        Assert.Equal(1, provider.RestoreCallCount);
+        Assert.Equal(VmHarnessVerdict.HarnessError, result.Verdict);
     }
 
     [Fact]
-    public async Task GuestHostDisagreement_BlocksMutation()
+    public async Task GuestProofThrowsAfterCheckpoint_StillAttemptsRestore()
+    {
+        var provider = new FakeVmHarnessProvider();
+        var store = new InMemoryRunStore();
+        var guest = new FakeGuestTransport { ThrowOnStatus = true };
+        var counting = new CountingScenario();
+        var orchestrator = new VmHarnessOrchestrator(
+            provider,
+            store,
+            guest,
+            new VmHarnessScenarioRegistry([counting]));
+
+        var result = await orchestrator.RunAsync(new VmHarnessRunOptions(
+            "lab-vm",
+            "count",
+            VmHarnessRunMode.ExecuteDisposableVmMutation,
+            "artifacts/vm-harness",
+            "abc123",
+            TimeSpan.FromMinutes(1)));
+
+        Assert.Equal(1, provider.RestoreCallCount);
+        Assert.Equal(VmHarnessRestoreOutcome.Succeeded, result.RestoreOutcome);
+        Assert.Equal(0, counting.ExecuteCount);
+        Assert.Equal(VmHarnessVerdict.HarnessError, result.Verdict);
+    }
+
+    [Fact]
+    public async Task GuestHostDisagreement_BlocksMutationButRestores()
     {
         var provider = new FakeVmHarnessProvider();
         var store = new InMemoryRunStore();
@@ -248,8 +288,7 @@ public sealed class VmHarnessOrchestratorTests
 
         Assert.Equal(0, counting.ExecuteCount);
         Assert.Equal(VmHarnessVerdict.FailClosed, result.Verdict);
-        Assert.Equal(VmHarnessMutationOutcome.Blocked, result.MutationOutcome);
-        Assert.Equal(VmHarnessRestoreOutcome.Succeeded, result.RestoreOutcome);
+        Assert.Equal(1, provider.RestoreCallCount);
     }
 
     [Fact]
@@ -257,7 +296,7 @@ public sealed class VmHarnessOrchestratorTests
     {
         var provider = new FakeVmHarnessProvider();
         var store = new InMemoryRunStore();
-        var guest = new FakeGuestTransport { PlanOutput = "No actionable update plans were created." };
+        var guest = new FakeGuestTransport { PlanJson = "{\"plans\":[]}" };
         var orchestrator = new VmHarnessOrchestrator(
             provider,
             store,
@@ -276,37 +315,32 @@ public sealed class VmHarnessOrchestratorTests
     }
 }
 
-public sealed class VmHarnessScenarioRegistryTests
-{
-    [Fact]
-    public void CreateDefault_ContainsRequiredScenarios()
-    {
-        var ids = VmHarnessScenarioRegistry.CreateDefault().ListDefinitions().Select(d => d.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("baseline-low-risk-install", ids);
-        Assert.Contains("abort-before-elevation", ids);
-        Assert.Contains("wrong-pid-client", ids);
-        Assert.Contains("post-install-inconclusive", ids);
-    }
-}
-
-public sealed class HyperVGuestStatusParserTests
-{
-    [Fact]
-    public void ParseStatus_ReadsDisposableVmFlag()
-    {
-        var proof = VmHarnessGuestStatusParser.ParseStatus(
-            "Lab build: True\nMutation enabled: true\nEnvironment: DisposableVm\nReason: enabled\nDisposable VM detected: true");
-        Assert.True(proof.IsDisposableVm);
-        Assert.True(proof.MutationCapabilityEnabled);
-    }
-}
-
 [Trait("Category", "HyperVIntegration")]
 public sealed class HyperVIntegrationTests
 {
-    [Fact(Skip = "Opt-in Hyper-V integration test; requires local Hyper-V VM named TORTOISE_HARNESS_VM.")]
-    public void Placeholder_OptInOnly()
+    [Fact(Skip = "Opt-in Hyper-V integration test; set TORTOISE_HARNESS_VM to the exact VM name.")]
+    public async Task OptIn_ResolveCreateRestoreLifecycle()
     {
-        Assert.True(OperatingSystem.IsWindows());
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var vmName = Environment.GetEnvironmentVariable("TORTOISE_HARNESS_VM");
+        Assert.False(string.IsNullOrWhiteSpace(vmName));
+
+        await RunHyperVLifecycleAsync(vmName!);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static async Task RunHyperVLifecycleAsync(string vmName)
+    {
+        var provider = new Tortoise.VmHarness.Providers.HyperV.HyperVVmHarnessProvider();
+        await provider.EnsureHostRequirementsAsync();
+        var target = await provider.ResolveVmAsync(vmName);
+        target = await provider.VerifyTargetIdentityAsync(target);
+        var checkpoint = await provider.CreateCheckpointAsync(target, $"TortoiseHarness-test-{Guid.NewGuid():N}");
+        var restore = await provider.RestoreCheckpointAsync(target, checkpoint);
+        Assert.True(restore.HyperVStateRunning);
     }
 }

@@ -1,6 +1,3 @@
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Xml.Linq;
 
 namespace Tortoise.VerificationSummary;
@@ -15,16 +12,16 @@ internal sealed record VerificationSummaryPayload(
     int? BuildWarnings,
     int? BuildErrors,
     int TestProjectCount,
-    int IntegrationTestCount,
+    int? IntegrationTestCount,
     DateTimeOffset Timestamp,
     IReadOnlyList<string> TrxFiles);
 
 internal static class Program
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
     };
 
     public static int Main(string[] args)
@@ -61,13 +58,13 @@ internal static class Program
             counters.Skipped,
             ParseInt(GetOption(args, "--build-warnings")),
             ParseInt(GetOption(args, "--build-errors")),
-            trxFiles.Select(path => Path.GetFileName(path)).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+            trxFiles.Length,
             counters.IntegrationTests,
             DateTimeOffset.UtcNow,
             trxFiles.Select(Path.GetFullPath).OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList());
 
         var jsonPath = Path.Combine(outputRoot, "summary.json");
-        File.WriteAllText(jsonPath, JsonSerializer.Serialize(payload, JsonOptions));
+        File.WriteAllText(jsonPath, System.Text.Json.JsonSerializer.Serialize(payload, JsonOptions));
 
         var md = BuildMarkdown(payload);
         var mdPath = Path.Combine(outputRoot, "summary.md");
@@ -82,6 +79,19 @@ internal static class Program
     {
         var doc = XDocument.Load(trxFile);
         XNamespace ns = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010";
+        var traitsByTestId = doc.Descendants(ns + "UnitTest")
+            .Select(element => new
+            {
+                Id = element.Attribute("id")?.Value,
+                Traits = element.Descendants(ns + "Trait")
+                    .Select(trait => (
+                        Name: trait.Attribute("name")?.Value,
+                        Value: trait.Attribute("value")?.Value))
+                    .ToList(),
+            })
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Id))
+            .ToDictionary(entry => entry.Id!, entry => entry.Traits);
+
         var results = doc.Descendants(ns + "UnitTestResult").ToList();
         foreach (var result in results)
         {
@@ -100,8 +110,12 @@ internal static class Program
                     break;
             }
 
-            var testName = result.Attribute("testName")?.Value ?? string.Empty;
-            if (testName.Contains("Integration", StringComparison.OrdinalIgnoreCase))
+            var testId = result.Attribute("testId")?.Value;
+            if (testId is not null
+                && traitsByTestId.TryGetValue(testId, out var traits)
+                && traits.Any(trait =>
+                    string.Equals(trait.Name, "Category", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(trait.Value, "Integration", StringComparison.OrdinalIgnoreCase)))
             {
                 counters.IntegrationTests++;
             }
@@ -110,7 +124,7 @@ internal static class Program
 
     private static string BuildMarkdown(VerificationSummaryPayload payload)
     {
-        var builder = new StringBuilder();
+        var builder = new System.Text.StringBuilder();
         builder.AppendLine("# Verification Summary");
         builder.AppendLine();
         builder.AppendLine($"- SHA: `{payload.Sha}`");
@@ -131,7 +145,11 @@ internal static class Program
         }
 
         builder.AppendLine($"- TRX files: {payload.TrxFiles.Count}");
-        builder.AppendLine($"- Integration tests (name heuristic): {payload.IntegrationTestCount}");
+        if (payload.IntegrationTestCount is not null)
+        {
+            builder.AppendLine($"- Integration tests (TRX Category trait): {payload.IntegrationTestCount}");
+        }
+
         return builder.ToString();
     }
 

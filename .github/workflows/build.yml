@@ -25,7 +25,7 @@ jobs:
         run: dotnet run --project tools/Tortoise.VerificationSummary -- --trx-root=artifacts/test-results --output-root=artifacts/verification --sha=${{ github.sha }} --os=Linux
       - name: Upload verification artifacts
         if: always()
-        uses: actions/upload-artifact@4.3.4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: verification-linux
           path: artifacts/verification/
@@ -50,7 +50,7 @@ jobs:
         run: dotnet run --project tools/Tortoise.VerificationSummary -- --trx-root=artifacts/test-results --output-root=artifacts/verification --sha=$env:GITHUB_SHA --os=Windows
       - name: Upload verification artifacts
         if: always()
-        uses: actions/upload-artifact@4.3.4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: verification-windows
           path: artifacts/verification/

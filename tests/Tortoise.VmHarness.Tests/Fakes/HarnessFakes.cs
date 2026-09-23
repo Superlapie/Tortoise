@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using Tortoise.VmHarness.Domain;
 using Tortoise.VmHarness.Guest;
 using Tortoise.VmHarness.Providers;
@@ -37,6 +38,11 @@ internal sealed class FakeVmHarnessProvider : IVmHarnessProvider
         return Task.FromResult(new VmHarnessVmTarget(vmName, Guid.NewGuid().ToString(), "Running", true));
     }
 
+    public Task<VmHarnessVmTarget> VerifyTargetIdentityAsync(
+        VmHarnessVmTarget target,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(target);
+
     public Task<VmHarnessCheckpoint> CreateCheckpointAsync(
         VmHarnessVmTarget target,
         string checkpointName,
@@ -69,6 +75,7 @@ internal sealed class FakeVmHarnessProvider : IVmHarnessProvider
                 checkpoint.Name,
                 checkpoint.Id,
                 false,
+                false,
                 "Restore failed.",
                 "simulated failure"));
         }
@@ -78,14 +85,15 @@ internal sealed class FakeVmHarnessProvider : IVmHarnessProvider
             checkpoint.Name,
             checkpoint.Id,
             true,
+            true,
             "Restored."));
     }
 
-    public Task WaitForVmRunningAsync(
+    public Task<bool> WaitForHyperVRunningAsync(
         VmHarnessVmTarget target,
         TimeSpan timeout,
         CancellationToken cancellationToken = default) =>
-        Task.CompletedTask;
+        Task.FromResult(true);
 }
 
 internal sealed class FakeGuestTransport : IVmHarnessGuestTransport
@@ -93,20 +101,28 @@ internal sealed class FakeGuestTransport : IVmHarnessGuestTransport
     public bool IsConfigured { get; init; } = true;
     public bool ReportDisposableVm { get; init; } = true;
     public bool ReportMutationEnabled { get; init; } = true;
-    public string PlanOutput { get; init; } =
-        "Plan 11111111-1111-1111-1111-111111111111\nRisk: Low\nClassification: WindowsRecommended";
+    public bool ThrowOnStatus { get; set; }
+    public string PlanJson { get; init; } =
+        "{\"plans\":[{\"planId\":\"11111111-1111-1111-1111-111111111111\",\"riskLevel\":\"Low\",\"classification\":\"WindowsRecommended\"}]}";
 
     public Task<VmHarnessGuestEnvironmentProof> GetEnvironmentProofAsync(
         string vmName,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult(new VmHarnessGuestEnvironmentProof(
+        CancellationToken cancellationToken = default)
+    {
+        if (ThrowOnStatus)
+        {
+            throw new InvalidOperationException("guest status failed");
+        }
+
+        return Task.FromResult(new VmHarnessGuestEnvironmentProof(
             ReportDisposableVm,
             true,
             true,
             ReportMutationEnabled,
             "DisposableVm",
             "enabled",
-            "Disposable VM detected: true\nMutation enabled: true"));
+            "{\"isDisposableVm\":true}"));
+    }
 
     public Task<VmHarnessGuestCommandResult> ExecuteCommandAsync(
         string vmName,
@@ -114,28 +130,45 @@ internal sealed class FakeGuestTransport : IVmHarnessGuestTransport
         IReadOnlyDictionary<string, string>? environmentVariables = null,
         CancellationToken cancellationToken = default)
     {
-        if (command.StartsWith("tortoise scan", StringComparison.OrdinalIgnoreCase))
+        if (command.Contains("tortoise recommend", StringComparison.OrdinalIgnoreCase))
         {
-            return Task.FromResult(new VmHarnessGuestCommandResult(0, "scan ok", string.Empty, TimeSpan.FromSeconds(1)));
+            return Task.FromResult(new VmHarnessGuestCommandResult(0, "recommend ok", string.Empty, TimeSpan.FromSeconds(1)));
         }
 
-        if (command.StartsWith("tortoise plan", StringComparison.OrdinalIgnoreCase))
+        if (command.Contains("tortoise plan --json", StringComparison.OrdinalIgnoreCase))
         {
-            return Task.FromResult(new VmHarnessGuestCommandResult(0, PlanOutput, string.Empty, TimeSpan.FromSeconds(1)));
+            return Task.FromResult(new VmHarnessGuestCommandResult(0, PlanJson, string.Empty, TimeSpan.FromSeconds(1)));
         }
 
-        if (command.StartsWith("tortoise preflight", StringComparison.OrdinalIgnoreCase))
+        if (command.Contains("tortoise preflight", StringComparison.OrdinalIgnoreCase))
         {
             return Task.FromResult(new VmHarnessGuestCommandResult(0, "preflight ok", string.Empty, TimeSpan.FromSeconds(1)));
         }
 
-        if (command.StartsWith("tortoise-lab vm install", StringComparison.OrdinalIgnoreCase))
+        if (command.Contains("tortoise-lab vm install", StringComparison.OrdinalIgnoreCase))
         {
-            return Task.FromResult(new VmHarnessGuestCommandResult(0, "install ok", string.Empty, TimeSpan.FromSeconds(1)));
+            return Task.FromResult(new VmHarnessGuestCommandResult(
+                0,
+                "{\"planId\":\"11111111-1111-1111-1111-111111111111\",\"classification\":\"Completed\",\"completedSuccessfully\":true,\"summary\":\"install ok\"}",
+                string.Empty,
+                TimeSpan.FromSeconds(1)));
+        }
+
+        if (command.Contains("export-report", StringComparison.OrdinalIgnoreCase)
+            || command.Contains("recover list", StringComparison.OrdinalIgnoreCase)
+            || command.Contains("type ", StringComparison.OrdinalIgnoreCase))
+        {
+            return Task.FromResult(new VmHarnessGuestCommandResult(0, "{}", string.Empty, TimeSpan.Zero));
         }
 
         return Task.FromResult(new VmHarnessGuestCommandResult(0, command, string.Empty, TimeSpan.Zero));
     }
+
+    public Task<bool> ProbeReachabilityAsync(
+        string vmName,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(true);
 }
 
 internal sealed class InMemoryRunStore : IVmHarnessRunStore

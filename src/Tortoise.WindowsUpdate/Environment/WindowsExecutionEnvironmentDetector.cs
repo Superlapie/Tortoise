@@ -19,9 +19,9 @@ public sealed class WindowsExecutionEnvironmentDetector : IExecutionEnvironmentD
 
         return new ExecutionEnvironmentInfo(
             IsDisposableVm: DetectGuestVm(),
-            mutationTests,
-            allowVmInstall,
-            physicalPilot);
+            MutationTestsEnabled: mutationTests,
+            VmInstallExplicitlyAllowed: allowVmInstall,
+            PhysicalPilotExplicitlyAllowed: physicalPilot);
     }
 
     private static bool DetectGuestVm()
