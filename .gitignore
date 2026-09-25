@@ -3,7 +3,13 @@
 [Oo]bj/
 [Dd]ebug/
 [Rr]elease/
-artifacts/
+artifacts/*
+!artifacts/qemu-lab/
+artifacts/qemu-lab/*
+!artifacts/qemu-lab/host-assessment.md
+!artifacts/qemu-lab/host-assessment.json
+!artifacts/qemu-lab/nvme-preflight.md
+!artifacts/qemu-lab/nvme-preflight.json
 publish/
 *.user
 *.suo

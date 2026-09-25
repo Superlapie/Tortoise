@@ -1,0 +1,38 @@
+{
+  "assessedAtUtc": "2026-09-23T05:38:00Z",
+  "hostName": "ZealVPS",
+  "azureVmSize": "Standard_D4ads_v7",
+  "verdict": "SAFE_FOR_KVM_LAB",
+  "proofStatus": "QEMU_LAB_READY",
+  "kvm": {
+    "deviceExists": true,
+    "currentUserInKvmGroup": true,
+    "kvmUsableByCurrentUser": true,
+    "note": "Group membership added; current shell may use sg kvm until re-login"
+  },
+  "memory": {
+    "totalHuman": "15.6 GiB",
+    "memAvailableHuman": "11.5 GiB",
+    "safeHostRamReserveHuman": "8 GiB",
+    "recommendedGuestRamHuman": "4 GiB"
+  },
+  "disk": {
+    "osRootFreeHuman": "24 GiB",
+    "labMountPoint": "/mnt/tortoise-qemu-lab",
+    "labDevice": "/dev/nvme1n1",
+    "labFilesystem": "ext4",
+    "labFilesystemUuid": "23055e49-fba3-4068-b415-eafbd49aa809",
+    "labTotalHuman": "216 GiB",
+    "labFreeHuman": "214 GiB",
+    "labCeilingHuman": "160 GiB",
+    "ephemeralAzureTemporaryDisk": true
+  },
+  "virtualizationTooling": {
+    "qemuSystemX8664Installed": true,
+    "qemuVersion": "8.2.2",
+    "ovmfInstalled": true,
+    "packagesInstalled": ["qemu-system-x86", "qemu-utils", "ovmf", "wimtools"]
+  },
+  "guestOsChoice": "Windows Server 2025 Datacenter Evaluation (Desktop Experience, index 4)",
+  "isoSource": "https://go.microsoft.com/fwlink/?linkid=2293312 (Microsoft Evaluation Center redirect)"
+}

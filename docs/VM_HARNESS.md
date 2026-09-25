@@ -48,8 +48,9 @@ Any unknown safety-critical state **blocks** the operation. There is no `--force
 
 | Provider | Status |
 |----------|--------|
-| Hyper-V | Implemented (`HyperVVmHarnessProvider`) |
-| VMware / VirtualBox / cloud / SSH | Not implemented in Batch 16 |
+| Hyper-V | Implemented (`HyperVVmHarnessProvider`) on **Windows** hosts |
+| QEMU/KVM | Scaffolded (`QemuVmHarnessProvider`) for **Linux** nested-KVM labs — see [QEMU_LAB.md](QEMU_LAB.md) |
+| VMware / VirtualBox / cloud / SSH | Not implemented |
 
 There is **no default VM name**. You must pass `--vm <exact-name>`.
 
@@ -233,6 +234,26 @@ Do **not** run `--execute-disposable-vm-mutation` until:
 9. Host and guest VM proofs agree
 
 If no suitable disposable Hyper-V VM exists, stop at harness-ready state: **AWAITING DISPOSABLE VM EXECUTION**.
+
+## QEMU/KVM lab (Linux hosts)
+
+For nested-KVM Linux dev hosts (for example Azure `Standard_D4ads_v7`), see **[QEMU_LAB.md](QEMU_LAB.md)**.
+
+| Hyper-V harness concept | QEMU lab equivalent |
+|-------------------------|---------------------|
+| Checkpoint | Disposable qcow2 overlay over sealed base |
+| Restore checkpoint | Discard overlay (base fingerprint unchanged) |
+| VM ID binding | Run ID + overlay path + base SHA-256 |
+| PowerShell Direct | Future: localhost-forwarded WinRM/RDP (not wired in CLI yet) |
+
+`QemuVmHarnessProvider` is scaffolded alongside `HyperVVmHarnessProvider`. The CLI still defaults to Hyper-V on Windows. QEMU support is **not production-ready** until:
+
+1. Host assessment verdict is `SAFE_FOR_KVM_LAB` (or explicit TCG opt-in)
+2. Windows base image is sealed under a dedicated lab root outside the repo
+3. Disposable overlay create → boot → discard → re-overlay proof succeeds
+4. Host and guest proofs agree (see QEMU_LAB.md)
+
+**Do not** run `--execute-disposable-vm-mutation` on QEMU until those proofs complete.
 
 ## Troubleshooting
 

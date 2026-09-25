@@ -1,0 +1,52 @@
+{
+  "assessedAtUtc": "2026-09-23T05:34:00Z",
+  "hostName": "ZealVPS",
+  "azureVmSize": "Standard_D4ads_v7",
+  "azureLocation": "eastus",
+  "azureVmId": "76bdfa25-1041-42f2-8964-c3a205756dfb",
+  "managedDataDisks": [],
+  "osDiskDevice": "/dev/nvme0n1",
+  "rootMountSource": "/dev/nvme0n1p1",
+  "rootNotOnNvme1n1": true,
+  "candidateLabDevice": "/dev/nvme1n1",
+  "candidateSizeBytes": 236223201280,
+  "candidateSizeHuman": "220 GiB",
+  "candidateModel": "Microsoft NVMe Direct Disk v2",
+  "candidateSerial": "b04204e8301f90100001",
+  "azureLocalDiskLinks": {
+    "byIndex1": "/dev/disk/azure/local/by-index/1 -> nvme1n1",
+    "byName": "/dev/disk/azure/local/by-name/nvme-220G-1 -> nvme1n1",
+    "bySerial": "/dev/disk/azure/local/by-serial/b04204e8301f90100001 -> nvme1n1"
+  },
+  "osDiskModel": "MSFT NVMe Accelerator v1.0",
+  "checks": {
+    "hasPartitions": false,
+    "hasFilesystem": false,
+    "isMounted": false,
+    "inFstab": false,
+    "inLvm": false,
+    "inRaid": false,
+    "usedAsSwap": false,
+    "blkidSignature": null,
+    "first4kAllZero": true,
+    "openProcessesFuser": false,
+    "openProcessesLsof": false,
+    "deviceMapperReferences": false
+  },
+  "lsblkSummary": {
+    "nvme0n1": "128G OS disk with ext4 /, vfat /boot/efi, ext4 /boot",
+    "nvme1n1": "220G bare disk, no FSTYPE, no MOUNTPOINTS"
+  },
+  "verdict": "SAFE_TO_FORMAT",
+  "intendedMountPoint": "/mnt/tortoise-qemu-lab",
+  "intendedFilesystem": "ext4",
+  "intendedLabCeilingGiB": 160,
+  "ephemeralAzureTemporaryDisk": true,
+  "noFstabEntryPlanned": true,
+  "prohibitedActionsNotTaken": [
+    "format",
+    "mount",
+    "partition_other_devices",
+    "reboot"
+  ]
+}
